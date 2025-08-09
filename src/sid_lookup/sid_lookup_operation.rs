@@ -1,7 +1,5 @@
 use super::SidLookupResult;
-use crate::sid_type::SidType;
 use crate::{DomainAndName, Sid};
-use num_enum::TryFromPrimitive;
 use smallvec::SmallVec;
 use std::{ffi::OsString, os::windows::ffi::OsStringExt, ptr::null_mut};
 use widestring::U16CString;
@@ -40,7 +38,7 @@ impl<'a> SidLookupOperation<'a> {
 
             let err = GetLastError();
             if result == 0 && err != ERROR_INSUFFICIENT_BUFFER {
-                eprintln!("LookupAccountSidW failed: {}", err);
+                eprintln!("LookupAccountSidW failed: {err}");
                 return None;
             }
         }
@@ -79,7 +77,7 @@ impl<'a> SidLookupOperation<'a> {
             match result {
                 Some(ERROR_INSUFFICIENT_BUFFER) => self.process(),
                 Some(err) => {
-                    panic!("LookupAccountSidW failed: {}", err);
+                    panic!("LookupAccountSidW failed: {err}");
                 }
                 None => {
                     name_buffer.set_len(self.name_len as usize);

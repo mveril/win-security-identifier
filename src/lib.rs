@@ -4,7 +4,6 @@ mod sid;
 
 pub use security_identifier::SecurityIdentifier;
 pub use sid::Sid;
-use sid::{SID_HEAD_ALIGN, SID_HEAD_SIZE};
 #[cfg(not(feature = "nightly"))]
 pub(crate) mod polyfils_ptr;
 use security_identifier::SidSizeInfo;

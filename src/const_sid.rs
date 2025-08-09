@@ -34,8 +34,8 @@ impl<const N: usize> ConstSid<N> {
             Some(Self {
                 revision,
                 sub_authority_count: N as u8,
-                sub_authority: sub_authority,
-                identifier_authority: identifier_authority,
+                sub_authority,
+                identifier_authority,
             })
         } else {
             None
@@ -97,14 +97,11 @@ impl<const N: usize> Hash for ConstSid<N> {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        alloc::Layout,
-        hash::{DefaultHasher, Hash, Hasher},
-    };
+    use std::hash::{DefaultHasher, Hash, Hasher};
 
     use super::*;
-    use crate::{SidSizeInfo, security_identifier::test::arb_security_identifier};
-    use proptest::*;
+    use crate::SidSizeInfo;
+    
     #[test]
     pub fn test_hash() {
         let sid = ConstSid::new(1, [1, 0, 0, 0, 0, 0].into(), [0; 1]).unwrap();

@@ -1,6 +1,6 @@
 use num_enum::TryFromPrimitive;
 
-use crate::{DomainAndName, SidType, sid, sid_lookup::sid_lookup_operation::SidLookupOperation};
+use crate::{DomainAndName, SidType};
 
 pub struct SidLookupResult {
     pub domain_name: DomainAndName,

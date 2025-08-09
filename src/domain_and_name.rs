@@ -46,13 +46,11 @@ impl FromStr for DomainAndName {
         let mut parts = s.split('\\');
         let domain = parts
             .next()
-            .map(|s| OsString::from_str(s).ok())
-            .flatten()
+            .and_then(|s| OsString::from_str(s).ok())
             .ok_or(DomainParsingError)?;
         let name = parts
             .next()
-            .map(|s| OsString::from_str(s).ok())
-            .flatten()
+            .and_then(|s| OsString::from_str(s).ok())
             .ok_or(DomainParsingError)?;
         if parts.next().is_some() {
             return Err(DomainParsingError);

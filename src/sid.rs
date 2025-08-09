@@ -1,4 +1,3 @@
-
 #[cfg(windows)]
 mod windows;
 
@@ -6,17 +5,13 @@ use crate::SidIdentifierAuthority;
 
 use crate::SidSizeInfo;
 
-#[cfg(not(has_ptr_metadata))]
-use crate::polyfils_ptr::from_raw_parts;
 #[cfg(has_ptr_metadata)]
 use std::ptr::from_raw_parts;
 use std::{
     alloc::Layout,
     fmt::{self, Debug, Display},
     hash::Hash,
-    mem::MaybeUninit,
-    os::raw::c_void,
-    ptr, slice,
+    slice,
 };
 
 #[repr(C)]
@@ -81,17 +76,17 @@ impl Display for Sid {
 
         // Identifier Authority: print as decimal if fits in u32, else as hex
         let mut be_bytes = [0u8; 8];
-        be_bytes[2..].copy_from_slice(&self.identifier_authority.value.as_slice());
+        be_bytes[2..].copy_from_slice(self.identifier_authority.value.as_slice());
         let id_auth_value = u64::from_be_bytes(be_bytes);
         if id_auth_value <= 0xFFFFFFFF {
-            write!(f, "-{}", id_auth_value)?;
+            write!(f, "-{id_auth_value}")?;
         } else {
-            write!(f, "-0x{:X}", id_auth_value)?;
+            write!(f, "-0x{id_auth_value:X}")?;
         }
 
         // SubAuthorities
         for &sub_auth in self.get_sub_authorities() {
-            write!(f, "-{}", sub_auth)?;
+            write!(f, "-{sub_auth}")?;
         }
         Ok(())
     }
@@ -109,7 +104,7 @@ impl Hash for Sid {
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
         self.identifier_authority.hash(state);
-        Hash::hash_slice(&self.get_sub_authorities(), state);
+        Hash::hash_slice(self.get_sub_authorities(), state);
     }
 }
 
@@ -120,10 +115,10 @@ mod tests {
 
     use crate::{SecurityIdentifier, arb_security_identifier};
 
-    use super::super::arb_identifier_authority;
+    
     use super::*;
     use proptest::prelude::*;
-    use widestring::WideCString;
+    
     proptest! {
         #[test]
         fn sid_display_round_trip(sid in arb_security_identifier()) {
@@ -167,14 +162,15 @@ mod tests {
     mod windows {
         use std::ops::Deref;
 
-        use crate::{SecurityIdentifier, arb_security_identifier};
-
         use super::super::*;
+        use crate::arb_security_identifier;
         use proptest::prelude::*;
-        use widestring::{WideCStr, WideCString, widecstr};
+        use std::mem::MaybeUninit;
+        use std::os::raw::c_void;
+        use widestring::{WideCStr, WideCString};
         use windows_sys::Win32::Foundation::{GetLastError, LocalFree};
         use windows_sys::Win32::Security::Authorization::*;
-        use windows_sys::Win32::Security::*;
+        
         proptest! {
         #[test]
          fn test_to_string_windows_parsable(r_sid in arb_security_identifier()) {
