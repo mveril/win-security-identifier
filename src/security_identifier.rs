@@ -19,7 +19,7 @@ use std::str::FromStr;
 use std::{borrow::Borrow, ops::Deref, ptr::NonNull};
 use thiserror::Error;
 #[cfg(windows)]
-use windows_sys::Win32::{Foundation::LocalFree, Security::*};
+use windows_sys::Win32::Security::*;
 
 pub struct SecurityIdentifier {
     sid: NonNull<Sid>,
@@ -69,7 +69,7 @@ impl SecurityIdentifier {
         Self::try_new(revision, identifier_authority, sub_authority).unwrap()
     }
 
-    unsafe fn uninit(size_info: SidSizeInfo) -> Self {
+    unsafe fn uninit(size_info: SidSizeInfo) -> Self { unsafe {
         let layout = size_info.get_layout();
         let mem_ptr = alloc::alloc(layout);
         if mem_ptr.is_null() {
@@ -84,9 +84,9 @@ impl SecurityIdentifier {
         ptr.as_mut().sub_authority_count = size_info.sub_authority_count;
         Self {
             sid: ptr,
-            layout: layout,
+            layout,
         }
-    }
+    }}
 
     #[cfg(windows)]
     pub fn get_current_user_sid<'a>() -> Result<SecurityIdentifier, TokenError> {
@@ -173,7 +173,7 @@ impl FromStr for SecurityIdentifier {
                 .map_err(|_| InvalidSidFormat)?;
         }
 
-        Ok(unsafe { Self::new_unchecked(revision, authority, &sub_authorities.as_slice()) })
+        Ok(unsafe { Self::new_unchecked(revision, authority, sub_authorities.as_slice()) })
     }
 }
 
@@ -268,7 +268,7 @@ pub(crate) mod test {
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfils_ptr::metadata;
     use proptest::prelude::*;
-    use std::alloc::Layout;
+    
     use std::hash::Hash;
     use std::hash::Hasher;
     use std::ops::Deref;
@@ -298,7 +298,7 @@ pub(crate) mod test {
             assert_eq!(sid.get_sub_authorities().len(), sid.sub_authority_count as usize);
 
             // Display format: commence par S-1-
-            let disp = format!("{}", sid);
+            let disp = format!("{sid}");
             prop_assert!(disp.starts_with("S-1-"), "Display doesn't start with S-1- : {}", disp);
 
             // ToOwned et Eq
@@ -321,7 +321,7 @@ pub(crate) mod test {
             prop_assert_eq!(&*a, &*a);
 
             // Hash: equal => hash equal
-            if &*a == &*b {
+            if *a == *b {
                 let mut ha = std::collections::hash_map::DefaultHasher::new();
                 let mut hb = std::collections::hash_map::DefaultHasher::new();
                 a.hash(&mut ha);
@@ -332,14 +332,14 @@ pub(crate) mod test {
 
         #[test]
         fn test_sub_authority_slice_bounds(security_identifier in arb_security_identifier()) {
-            let sid: &Sid = &*security_identifier;
+            let sid: &Sid = &security_identifier;
             let subs = sid.get_sub_authorities();
-            assert!(subs.len() >= 1 && subs.len() <= 15, "sub_authorities length must be in 1..=15");
+            assert!(!subs.is_empty() && subs.len() <= 15, "sub_authorities length must be in 1..=15");
         }
 
          #[test]
         fn test_ptr_metadata(security_identifier in arb_security_identifier()) {
-            let sid: &Sid = &*security_identifier;
+            let sid: &Sid = &security_identifier;
             prop_assert_eq!(sid.sub_authority_count as usize, sid.get_sub_authorities().len());
             prop_assert_eq!(sid.sub_authority_count as usize, metadata(sid));
         }
@@ -421,7 +421,7 @@ pub(crate) mod test {
                     None
                 }
             };
-            assert!(result.is_none(), "SID is not valid: {:?}", result);
+            assert!(result.is_none(), "SID is not valid: {result:?}");
         }
     }
 }

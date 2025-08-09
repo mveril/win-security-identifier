@@ -1,4 +1,3 @@
-use autocfg;
 use version_check::supports_feature;
 
 fn main() {
