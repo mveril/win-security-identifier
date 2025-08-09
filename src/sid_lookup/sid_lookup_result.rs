@@ -1,13 +1,16 @@
 use num_enum::TryFromPrimitive;
 
 use crate::{DomainAndName, SidType};
-
+/// This struct represent the result of a [SID lookup operation](https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-lookupaccountsidw).
 pub struct SidLookupResult {
+    /// The domain and name associated with the SID.
     pub domain_name: DomainAndName,
+    /// The raw SID type value.
     pub sid_type_raw: i32,
 }
 
 impl SidLookupResult {
+    /// Get the SID type as an enum.
     pub fn sid_type(&self) -> Result<SidType, num_enum::TryFromPrimitiveError<SidType>> {
         SidType::try_from_primitive(self.sid_type_raw)
     }

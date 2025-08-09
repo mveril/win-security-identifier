@@ -68,7 +68,6 @@ impl<'a> SidLookupOperation<'a> {
                 &mut self.domain_len,
                 &mut self.sid_type_raw,
             );
-            let err = GetLastError();
             let result = if result == 0 {
                 Some(GetLastError())
             } else {
