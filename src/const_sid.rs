@@ -9,22 +9,64 @@ use std::{
     fmt::{self, Display},
     hash::{self, Hash},
 };
+
+/// Fixed-size, compile-time Security Identifier (SID).
+///
+/// `ConstSid<N>` stores the SID header plus exactly `N` sub-authorities as a
+/// fixed-size array, making it usable in `const` contexts and suitable for
+/// static embeddings. It can be viewed as a dynamically-sized `Sid` via
+/// `AsRef<Sid>`, converted to an owning `SecurityIdentifier`, or created from
+/// an existing `Sid` when the sub-authority count matches `N`.
+///
+/// # Invariants
+/// - `sub_authority_count == N` at all times.
+/// - `N` must be within the valid Windows range for SIDs (1..=15).
+///
+/// # Examples
+/// ```rust
+/// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
+/// const ADMIN_ALIAS: ConstSid<2> = ConstSid::new(
+///     1,
+///     SidIdentifierAuthority::nt_authority(),
+///     [32, 544],
+/// ).unwrap();
+/// assert_eq!(ADMIN_ALIAS.to_string(), "S-1-5-32-544");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct ConstSid<const N: usize> {
+    /// SID revision (commonly `1`).
     pub revision: u8,
+    // Always equals N; kept private to preserve invariant.
     sub_authority_count: u8,
+    /// 6-byte identifier authority.
     pub identifier_authority: SidIdentifierAuthority,
+    /// Fixed-size list of sub-authorities.
     pub sub_authority: [u32; N],
 }
 
+// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> AsRef<Sid> for ConstSid<N> {
     fn as_ref(&self) -> &Sid {
+        // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
+        // matches `sub_authority.len()`. The header layout is compatible
+        // (`repr(C)`), and the trailing slice length equals N.
         unsafe { &*from_raw_parts(self as *const Self as *mut Self as *mut c_void, N) }
     }
 }
 
 impl<const N: usize> ConstSid<N> {
+    /// Creates a new `ConstSid<N>` after validating the sub-authority count.
+    ///
+    /// Returns `None` if `N` is outside the valid Windows range (1..=15).
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
+    /// let s = ConstSid::<2>::new(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
+    /// assert!(s.is_some());
+    /// ```
+    #[must_use]
     pub const fn new(
         revision: u8,
         identifier_authority: SidIdentifierAuthority,
@@ -42,6 +84,21 @@ impl<const N: usize> ConstSid<N> {
         }
     }
 
+    /// Creates a new `ConstSid<N>` **without** validating `N`.
+    ///
+    /// # Safety
+    /// Although this function itself is safe to call, it **assumes** that `N`
+    /// is a valid Windows SID sub-authority count (1..=15). If this is not true,
+    /// subsequent operations (interop, conversions) may panic or misbehave.
+    ///
+    /// Prefer [`ConstSid::new`] when possible.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
+    /// let s = ConstSid::<2>::new_unchecked(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
+    /// ```
+    #[must_use]
     pub fn new_unchecked(
         revision: u8,
         identifier_authority: SidIdentifierAuthority,
@@ -51,6 +108,7 @@ impl<const N: usize> ConstSid<N> {
     }
 }
 
+// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier {
     fn from(value: ConstSid<N>) -> Self {
         let sid: &Sid = value.as_ref();
@@ -58,6 +116,7 @@ impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier {
     }
 }
 
+// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> TryFrom<&Sid> for ConstSid<N> {
     type Error = TryFromSliceError;
 
@@ -73,6 +132,7 @@ impl<const N: usize> TryFrom<&Sid> for ConstSid<N> {
     }
 }
 
+// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> Display for ConstSid<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sid: &Sid = self.as_ref();
@@ -80,12 +140,14 @@ impl<const N: usize> Display for ConstSid<N> {
     }
 }
 
+// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> PartialEq<Sid> for ConstSid<N> {
     fn eq(&self, other: &Sid) -> bool {
         self.as_ref().eq(other)
     }
 }
 
+// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> Hash for ConstSid<N> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.revision.hash(state);

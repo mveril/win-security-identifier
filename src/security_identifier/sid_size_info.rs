@@ -21,10 +21,6 @@ impl SidSizeInfo {
         }
     }
 
-    pub fn get_full_size(&self) -> usize {
-        self.get_layout().size()
-    }
-
     pub fn get_layout(&self) -> Layout {
         // Usage de from_size_align (safe) plutôt que from_size_align_unchecked
         let head_layout = Layout::from_size_align(SID_HEAD_SIZE, SID_HEAD_ALIGN).unwrap();
@@ -44,7 +40,7 @@ mod test {
         #[test]
         fn prop_full_size_and_from_full_size(sub_authority_count in 0u8..16) {
             let info = SidSizeInfo { sub_authority_count };
-            let size = info.get_full_size();
+            let size = info.get_layout().size();
             let reconstructed = SidSizeInfo::from_full_size(size);
             prop_assert_eq!(info.sub_authority_count, reconstructed.sub_authority_count);
         }
@@ -54,14 +50,14 @@ mod test {
             let info = SidSizeInfo { sub_authority_count };
             let layout = info.get_layout();
             let expected_align = align_of::<u32>();
-            prop_assert_eq!(layout.size(), info.get_full_size());
+            prop_assert_eq!(layout.size(), SID_HEAD_SIZE + (info.sub_authority_count as usize) * size_of::<u32>());
             prop_assert_eq!(layout.align(), expected_align);
         }
 
         #[test]
         fn prop_full_size_always_multiple_of_u32(sub_authority_count in 0u8..16) {
             let info = SidSizeInfo { sub_authority_count };
-            let size = info.get_full_size();
+            let size = info.get_layout().size();
             prop_assert!((size - SID_HEAD_SIZE) % size_of::<u32>() == 0);
         }
     }
@@ -83,7 +79,7 @@ mod test {
             #[test]
             fn test_prop_full_size_compare_windows(sub_authority_count in 0u8..16) {
                 let info = SidSizeInfo { sub_authority_count };
-                let size = info.get_full_size();
+                let size = info.get_layout().size();
                 let winsize = unsafe {
                     GetSidLengthRequired(sub_authority_count)
                 } as usize;
