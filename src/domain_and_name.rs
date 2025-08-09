@@ -58,3 +58,21 @@ impl FromStr for DomainAndName {
         Ok(DomainAndName::new(domain, name))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_domain_and_name_parsing(domain in "[^\\\\]+", name in "[^\\\\]+") {
+            let input = format!("{}\\{}", domain, name);
+            let parsed = DomainAndName::from_str(&input).expect("Failed to parse domain and name");
+            assert_eq!(parsed.domain, OsString::from(domain));
+            assert_eq!(parsed.name, OsString::from(name));
+            assert_eq!(parsed.to_string(), input);
+            assert_eq!(parsed, DomainAndName::new(domain, name));
+        }
+    }
+}
