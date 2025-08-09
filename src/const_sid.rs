@@ -101,7 +101,7 @@ mod test {
 
     use super::*;
     use crate::SidSizeInfo;
-    
+
     #[test]
     pub fn test_hash() {
         let sid = ConstSid::new(1, [1, 0, 0, 0, 0, 0].into(), [0; 1]).unwrap();
