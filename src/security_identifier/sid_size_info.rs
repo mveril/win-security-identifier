@@ -37,7 +37,7 @@ impl SidSizeInfo {
 mod test {
     use super::*;
     use proptest::prelude::*;
-    
+
     use std::mem::size_of;
 
     proptest! {

@@ -115,10 +115,9 @@ mod tests {
 
     use crate::{SecurityIdentifier, arb_security_identifier};
 
-    
     use super::*;
     use proptest::prelude::*;
-    
+
     proptest! {
         #[test]
         fn sid_display_round_trip(sid in arb_security_identifier()) {
@@ -170,7 +169,7 @@ mod tests {
         use widestring::{WideCStr, WideCString};
         use windows_sys::Win32::Foundation::{GetLastError, LocalFree};
         use windows_sys::Win32::Security::Authorization::*;
-        
+
         proptest! {
         #[test]
          fn test_to_string_windows_parsable(r_sid in arb_security_identifier()) {

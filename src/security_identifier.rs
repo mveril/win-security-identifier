@@ -69,24 +69,23 @@ impl SecurityIdentifier {
         Self::try_new(revision, identifier_authority, sub_authority).unwrap()
     }
 
-    unsafe fn uninit(size_info: SidSizeInfo) -> Self { unsafe {
-        let layout = size_info.get_layout();
-        let mem_ptr = alloc::alloc(layout);
-        if mem_ptr.is_null() {
-            alloc::handle_alloc_error(layout);
+    unsafe fn uninit(size_info: SidSizeInfo) -> Self {
+        unsafe {
+            let layout = size_info.get_layout();
+            let mem_ptr = alloc::alloc(layout);
+            if mem_ptr.is_null() {
+                alloc::handle_alloc_error(layout);
+            }
+            let mut ptr: NonNull<Sid> = unsafe {
+                NonNull::new_unchecked(from_raw_parts_mut(
+                    mem_ptr as *mut c_void,
+                    size_info.sub_authority_count as usize,
+                ))
+            };
+            ptr.as_mut().sub_authority_count = size_info.sub_authority_count;
+            Self { sid: ptr, layout }
         }
-        let mut ptr: NonNull<Sid> = unsafe {
-            NonNull::new_unchecked(from_raw_parts_mut(
-                mem_ptr as *mut c_void,
-                size_info.sub_authority_count as usize,
-            ))
-        };
-        ptr.as_mut().sub_authority_count = size_info.sub_authority_count;
-        Self {
-            sid: ptr,
-            layout,
-        }
-    }}
+    }
 
     #[cfg(windows)]
     pub fn get_current_user_sid<'a>() -> Result<SecurityIdentifier, TokenError> {
@@ -268,7 +267,7 @@ pub(crate) mod test {
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfils_ptr::metadata;
     use proptest::prelude::*;
-    
+
     use std::hash::Hash;
     use std::hash::Hasher;
     use std::ops::Deref;

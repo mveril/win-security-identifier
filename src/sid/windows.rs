@@ -8,9 +8,7 @@ use std::ffi::OsStr;
 use widestring::WideCString;
 use windows_sys::Win32::Security::PSID;
 
-use crate::{
-    SidLookupResult, SidType, sid_lookup::SidLookupOperation,
-};
+use crate::{SidLookupResult, SidType, sid_lookup::SidLookupOperation};
 
 use super::Sid;
 
@@ -20,14 +18,16 @@ impl Sid {
     /// # Safety
     /// The `raw` pointer must point to a valid SID memory block with a correct layout
     /// and live at least as long as the returned reference.
-    pub const unsafe fn from_raw<'a>(raw: PSID) -> &'a Self { unsafe {
-        // Read sub_authority_count by forging a fat pointer with metadata=0 first.
-        let metadata = {
-            let ptr: *const Sid = from_raw_parts(raw, 0);
-            (*ptr).sub_authority_count
-        };
-        &*from_raw_parts(raw, metadata as usize)
-    }}
+    pub const unsafe fn from_raw<'a>(raw: PSID) -> &'a Self {
+        unsafe {
+            // Read sub_authority_count by forging a fat pointer with metadata=0 first.
+            let metadata = {
+                let ptr: *const Sid = from_raw_parts(raw, 0);
+                (*ptr).sub_authority_count
+            };
+            &*from_raw_parts(raw, metadata as usize)
+        }
+    }
 
     /// Returns the underlying raw `PSID` pointer.
     ///
