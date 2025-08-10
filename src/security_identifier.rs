@@ -364,6 +364,12 @@ impl PartialEq<Sid> for SecurityIdentifier {
     }
 }
 
+impl PartialEq<SecurityIdentifier> for Sid {
+    fn eq(&self, other: &SecurityIdentifier) -> bool {
+        self == other.as_ref()
+    }
+}
+
 impl PartialEq for SecurityIdentifier {
     fn eq(&self, other: &Self) -> bool {
         AsRef::<Sid>::as_ref(self) == other.as_ref()
