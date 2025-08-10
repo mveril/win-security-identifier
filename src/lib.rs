@@ -129,6 +129,7 @@ pub use sid_identifier_authority::SidIdentifierAuthority;
 pub(crate) use sid_identifier_authority::test::arb_identifier_authority;
 
 mod const_sid;
+pub mod internal;
 
 /// Const-friendly fixed-size SID (`N` sub-authorities).
 ///
