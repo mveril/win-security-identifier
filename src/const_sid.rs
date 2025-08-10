@@ -8,6 +8,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
     hash::{self, Hash},
+    ops::Deref,
 };
 
 /// Fixed-size, compile-time Security Identifier (SID).
@@ -24,13 +25,19 @@ use std::{
 ///
 /// # Examples
 /// ```rust
-/// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
+/// # use win_security_identifier::{ConstSid, SidIdentifierAuthority, SecurityIdentifier};
 /// const ADMIN_ALIAS: ConstSid<2> = ConstSid::new(
 ///     1,
 ///     SidIdentifierAuthority::nt_authority(),
 ///     [32, 544],
 /// ).unwrap();
 /// assert_eq!(ADMIN_ALIAS.to_string(), "S-1-5-32-544");
+/// // It can be converted from (if const is correct) and to owned.
+/// let owned: SecurityIdentifier = ADMIN_ALIAS.into();
+/// assert_eq!(owned.to_string(), ADMIN_ALIAS.to_string());
+/// assert_eq!(owned, ADMIN_ALIAS);
+/// assert_eq!(ConstSid::<2>::try_from(owned.as_ref()).unwrap(), ADMIN_ALIAS);
+/// assert!(ConstSid::<3>::try_from(owned).is_err());
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
@@ -45,7 +52,6 @@ pub struct ConstSid<const N: usize> {
     pub sub_authority: [u32; N],
 }
 
-// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> AsRef<Sid> for ConstSid<N> {
     fn as_ref(&self) -> &Sid {
         // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
@@ -97,6 +103,9 @@ impl<const N: usize> ConstSid<N> {
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
     /// let s = ConstSid::<2>::new_unchecked(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
+    /// assert_eq!(s.revision, 1);
+    /// assert_eq!(s.identifier_authority, SidIdentifierAuthority::nt_authority());
+    /// assert_eq!(s.sub_authority, [32, 544]);
     /// ```
     #[must_use]
     pub fn new_unchecked(
@@ -108,7 +117,30 @@ impl<const N: usize> ConstSid<N> {
     }
 }
 
-// (Standard trait impls intentionally left undocumented)
+impl<const N: usize> PartialEq<Sid> for ConstSid<N> {
+    fn eq(&self, other: &Sid) -> bool {
+        self.as_ref().eq(other)
+    }
+}
+
+impl<const N: usize> PartialEq<ConstSid<N>> for Sid {
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self.eq(other.as_ref())
+    }
+}
+
+impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N> {
+    fn eq(&self, other: &SecurityIdentifier) -> bool {
+        self.eq(other.as_ref())
+    }
+}
+
+impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier {
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self.eq(other.as_ref())
+    }
+}
+
 impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier {
     fn from(value: ConstSid<N>) -> Self {
         let sid: &Sid = value.as_ref();
@@ -116,7 +148,6 @@ impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier {
     }
 }
 
-// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> TryFrom<&Sid> for ConstSid<N> {
     type Error = TryFromSliceError;
 
@@ -132,7 +163,15 @@ impl<const N: usize> TryFrom<&Sid> for ConstSid<N> {
     }
 }
 
-// (Standard trait impls intentionally left undocumented)
+impl<const N: usize> TryFrom<SecurityIdentifier> for ConstSid<N> {
+    type Error = TryFromSliceError;
+
+    fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
+        let sid: &Sid = value.deref();
+        Self::try_from(sid)
+    }
+}
+
 impl<const N: usize> Display for ConstSid<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sid: &Sid = self.as_ref();
@@ -140,14 +179,6 @@ impl<const N: usize> Display for ConstSid<N> {
     }
 }
 
-// (Standard trait impls intentionally left undocumented)
-impl<const N: usize> PartialEq<Sid> for ConstSid<N> {
-    fn eq(&self, other: &Sid) -> bool {
-        self.as_ref().eq(other)
-    }
-}
-
-// (Standard trait impls intentionally left undocumented)
 impl<const N: usize> Hash for ConstSid<N> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.revision.hash(state);
