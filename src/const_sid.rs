@@ -1,6 +1,6 @@
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts;
-use crate::{SecurityIdentifier, Sid, SidIdentifierAuthority, utils::sub_authority_size_guard};
+use crate::{SecurityIdentifier, Sid, SidIdentifierAuthority, internal::SidLenValid};
 #[cfg(has_ptr_metadata)]
 use std::ptr::from_raw_parts;
 use std::{
@@ -41,7 +41,10 @@ use std::{
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
-pub struct ConstSid<const N: usize> {
+pub struct ConstSid<const N: usize>
+where
+    [u32; N]: SidLenValid,
+{
     /// SID revision (commonly `1`).
     pub revision: u8,
     // Always equals N; kept private to preserve invariant.
@@ -52,7 +55,10 @@ pub struct ConstSid<const N: usize> {
     pub sub_authority: [u32; N],
 }
 
-impl<const N: usize> AsRef<Sid> for ConstSid<N> {
+impl<const N: usize> AsRef<Sid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     fn as_ref(&self) -> &Sid {
         // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
         // matches `sub_authority.len()`. The header layout is compatible
@@ -61,7 +67,10 @@ impl<const N: usize> AsRef<Sid> for ConstSid<N> {
     }
 }
 
-impl<const N: usize> ConstSid<N> {
+impl<const N: usize> ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     /// Creates a new `ConstSid<N>` after validating the sub-authority count.
     ///
     /// Returns `None` if `N` is outside the valid Windows range (1..=15).
@@ -77,93 +86,80 @@ impl<const N: usize> ConstSid<N> {
         revision: u8,
         identifier_authority: SidIdentifierAuthority,
         sub_authority: [u32; N],
-    ) -> Option<Self> {
-        if sub_authority_size_guard(N) {
-            Some(Self {
-                revision,
-                sub_authority_count: N as u8,
-                sub_authority,
-                identifier_authority,
-            })
-        } else {
-            None
-        }
-    }
-
-    /// Creates a new `ConstSid<N>` **without** validating `N`.
-    ///
-    /// # Safety
-    /// Although this function itself is safe to call, it **assumes** that `N`
-    /// is a valid Windows SID sub-authority count (1..=15). If this is not true,
-    /// subsequent operations (interop, conversions) may panic or misbehave.
-    ///
-    /// Prefer [`ConstSid::new`] when possible.
-    ///
-    /// # Examples
-    /// ```rust
-    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
-    /// let s = ConstSid::<2>::new_unchecked(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
-    /// assert_eq!(s.revision, 1);
-    /// assert_eq!(s.identifier_authority, SidIdentifierAuthority::nt_authority());
-    /// assert_eq!(s.sub_authority, [32, 544]);
-    /// ```
-    #[must_use]
-    pub fn new_unchecked(
-        revision: u8,
-        identifier_authority: SidIdentifierAuthority,
-        sub_authority: [u32; N],
     ) -> Self {
-        Self::new(revision, identifier_authority, sub_authority).unwrap()
+        Self {
+            revision,
+            sub_authority_count: N as u8,
+            sub_authority,
+            identifier_authority,
+        }
     }
 }
 
-impl<const N: usize> PartialEq<Sid> for ConstSid<N> {
+impl<const N: usize> PartialEq<Sid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     fn eq(&self, other: &Sid) -> bool {
         self.as_ref().eq(other)
     }
 }
 
-impl<const N: usize> PartialEq<ConstSid<N>> for Sid {
+impl<const N: usize> PartialEq<ConstSid<N>> for Sid
+where
+    [u32; N]: SidLenValid,
+{
     fn eq(&self, other: &ConstSid<N>) -> bool {
         self.eq(other.as_ref())
     }
 }
 
-impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N> {
+impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     fn eq(&self, other: &SecurityIdentifier) -> bool {
         self.eq(other.as_ref())
     }
 }
 
-impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier {
+impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
+where
+    [u32; N]: SidLenValid,
+{
     fn eq(&self, other: &ConstSid<N>) -> bool {
         self.eq(other.as_ref())
     }
 }
 
-impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier {
+impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
+where
+    [u32; N]: SidLenValid,
+{
     fn from(value: ConstSid<N>) -> Self {
         let sid: &Sid = value.as_ref();
         sid.to_owned()
     }
 }
 
-impl<const N: usize> TryFrom<&Sid> for ConstSid<N> {
+impl<const N: usize> TryFrom<&Sid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     type Error = TryFromSliceError;
 
     fn try_from(value: &Sid) -> Result<Self, Self::Error> {
         let revision = value.revision;
         let identifier_authority = value.identifier_authority;
         let sub_authority: [u32; N] = value.get_sub_authorities().try_into()?;
-        Ok(Self::new_unchecked(
-            revision,
-            identifier_authority,
-            sub_authority,
-        ))
+        Ok(Self::new(revision, identifier_authority, sub_authority))
     }
 }
 
-impl<const N: usize> TryFrom<SecurityIdentifier> for ConstSid<N> {
+impl<const N: usize> TryFrom<SecurityIdentifier> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     type Error = TryFromSliceError;
 
     fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
@@ -172,14 +168,20 @@ impl<const N: usize> TryFrom<SecurityIdentifier> for ConstSid<N> {
     }
 }
 
-impl<const N: usize> Display for ConstSid<N> {
+impl<const N: usize> Display for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sid: &Sid = self.as_ref();
         Display::fmt(sid, f)
     }
 }
 
-impl<const N: usize> Hash for ConstSid<N> {
+impl<const N: usize> Hash for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
@@ -197,7 +199,7 @@ mod test {
 
     #[test]
     pub fn test_hash() {
-        let sid = ConstSid::new(1, [1, 0, 0, 0, 0, 0].into(), [0; 1]).unwrap();
+        let sid = ConstSid::new(1, [1, 0, 0, 0, 0, 0].into(), [0; 1]);
         let mut hasher1 = DefaultHasher::default();
         let mut hasher2 = DefaultHasher::default();
         sid.hash(&mut hasher1);
