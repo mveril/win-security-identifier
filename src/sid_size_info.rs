@@ -1,12 +1,14 @@
 use crate::sid::{SID_HEAD_ALIGN, SID_HEAD_SIZE};
-use std::alloc::Layout;
-use std::mem::size_of;
+use core::alloc::Layout;
+#[cfg(feature = "alloc")]
+use core::mem::size_of;
 
 pub(crate) struct SidSizeInfo {
     pub sub_authority_count: u8,
 }
 
 impl SidSizeInfo {
+    #[cfg(feature = "alloc")]
     pub const fn from_full_size(size: usize) -> Self {
         assert!(
             size >= SID_HEAD_SIZE,
@@ -34,8 +36,8 @@ mod test {
     use super::*;
     use proptest::prelude::*;
 
-    use std::mem::size_of;
-
+    use core::mem::size_of;
+    #[cfg(feature = "std")]
     proptest! {
         #[test]
         fn prop_full_size_and_from_full_size(sub_authority_count in 0u8..16) {
@@ -75,6 +77,7 @@ mod test {
             };
             assert_eq!(Layout::new::<SID>(), info.get_layout());
         }
+        #[cfg(feature = "std")]
         proptest! {
             #[test]
             fn test_prop_full_size_compare_windows(sub_authority_count in 0u8..16) {
