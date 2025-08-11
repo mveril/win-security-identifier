@@ -1,8 +1,9 @@
 // Windows-only integration test that fetches SID + DOMAIN\Name with canonical casing
 #![cfg(windows)]
+#![cfg(feature = "std")]
 
-use serde::Deserialize;
 use std::process::{Command, Stdio};
+use serde::Deserialize;
 use win_security_identifier::{DomainAndName, SecurityIdentifier, SidType};
 
 #[derive(Debug, Deserialize)]

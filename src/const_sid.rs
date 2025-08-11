@@ -1,15 +1,21 @@
+#[cfg(feature = "alloc")]
+use crate::SecurityIdentifier;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts;
-use crate::{SecurityIdentifier, Sid, SidIdentifierAuthority, internal::SidLenValid};
+use crate::{Sid, SidIdentifierAuthority, internal::SidLenValid};
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+use ::alloc::borrow::ToOwned;
+#[cfg(feature = "alloc")]
+use core::ops::Deref;
 #[cfg(has_ptr_metadata)]
-use std::ptr::from_raw_parts;
-use std::{
+use core::ptr::from_raw_parts;
+use core::{
     array::TryFromSliceError,
-    ffi::c_void,
     fmt::{self, Display},
     hash::{self, Hash},
-    ops::Deref,
 };
+#[cfg(feature = "std")]
+use std::borrow::ToOwned;
 
 /// Fixed-size, compile-time Security Identifier (SID).
 ///
@@ -63,7 +69,7 @@ where
         // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
         // matches `sub_authority.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
-        unsafe { &*from_raw_parts(self as *const Self as *mut Self as *mut c_void, N) }
+        unsafe { &*from_raw_parts(self as *const Self as *mut Self as *mut (), N) }
     }
 }
 
@@ -114,6 +120,7 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
@@ -122,7 +129,7 @@ where
         self.eq(other.as_ref())
     }
 }
-
+#[cfg(feature = "alloc")]
 impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
 where
     [u32; N]: SidLenValid,
@@ -132,6 +139,7 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
 where
     [u32; N]: SidLenValid,
@@ -156,6 +164,7 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<const N: usize> TryFrom<SecurityIdentifier> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
@@ -192,13 +201,12 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::hash::{DefaultHasher, Hash, Hasher};
-
+    #[cfg(feature = "std")]
     use super::*;
-    use crate::SidSizeInfo;
-
+    #[cfg(feature = "std")]
     #[test]
     pub fn test_hash() {
+        use std::hash::{DefaultHasher, Hash, Hasher};
         let sid = ConstSid::new(1, [1, 0, 0, 0, 0, 0].into(), [0; 1]);
         let mut hasher1 = DefaultHasher::default();
         let mut hasher2 = DefaultHasher::default();
@@ -207,9 +215,12 @@ mod test {
         assert_eq!(hasher1.finish(), hasher2.finish())
     }
 
+    #[cfg(feature = "alloc")]
     #[test]
     fn test_layout_matches_sid() {
-        use std::alloc::Layout;
+        use core::alloc::Layout;
+
+        use crate::SidSizeInfo;
         let size = SidSizeInfo {
             sub_authority_count: 1,
         };

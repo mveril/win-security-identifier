@@ -9,15 +9,14 @@
 //! owned by higher-level types (e.g., `SecurityIdentifier`). Direct mutation
 //! or construction must respect Windows SID invariants.
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "std"))]
 mod windows;
 
-use crate::SidIdentifierAuthority;
-use crate::SidSizeInfo;
+use crate::{SidIdentifierAuthority, SidSizeInfo};
 
 #[cfg(has_ptr_metadata)]
-use std::ptr::from_raw_parts;
-use std::{
+use core::ptr::from_raw_parts;
+use core::{
     alloc::Layout,
     fmt::{self, Debug, Display},
     hash::Hash,
@@ -66,9 +65,9 @@ pub(super) struct SidHead {
 }
 
 /// Size (in bytes) of the fixed `SidHead` header.
-pub(super) const SID_HEAD_SIZE: usize = std::mem::size_of::<SidHead>();
+pub(super) const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 /// Alignment (in bytes) of the fixed `SidHead` header.
-pub(super) const SID_HEAD_ALIGN: usize = std::mem::align_of::<SidHead>();
+pub(super) const SID_HEAD_ALIGN: usize = core::mem::align_of::<SidHead>();
 
 impl Sid {
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
@@ -108,6 +107,7 @@ impl Sid {
     /// - Same preconditions as `as_binary`.
     /// - Mutating the buffer must preserve SID invariants (e.g., do not desynchronize
     ///   `sub_authority_count` and the tail length).
+    #[cfg(feature = "alloc")]
     pub(crate) unsafe fn as_binary_mut(&mut self) -> &mut [u8] {
         unsafe {
             slice::from_raw_parts_mut(
@@ -186,7 +186,7 @@ impl PartialEq for Sid {
 
 impl Eq for Sid {}
 impl Hash for Sid {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
         self.identifier_authority.hash(state);
@@ -196,14 +196,15 @@ impl Hash for Sid {
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hasher;
-    use std::ops::Deref;
-
+    #[cfg(feature = "alloc")]
     use crate::{SecurityIdentifier, arb_security_identifier};
+    use core::hash::Hasher;
+    use core::ops::Deref;
 
     use super::*;
     use proptest::prelude::*;
 
+    #[cfg(feature = "std")]
     proptest! {
         #[test]
         fn sid_display_round_trip(sid in arb_security_identifier()) {
@@ -215,7 +216,6 @@ mod tests {
             prop_assert_eq!(dash_count, expected, "Dash count {} vs sub_authority_count {}", dash_count, expected);
             prop_assert_eq!(display.parse::<SecurityIdentifier>().unwrap(), sid);
         }
-
         #[test]
         fn sid_hash_and_eq(sid1 in arb_security_identifier(), sid2 in arb_security_identifier()) {
             // Reflexivity
@@ -246,17 +246,19 @@ mod tests {
 
     #[cfg(windows)]
     mod windows {
-        use std::ops::Deref;
+        use core::ops::Deref;
 
         use super::super::*;
+        #[cfg(feature = "alloc")]
         use crate::arb_security_identifier;
+        use core::ffi::c_void;
+        use core::mem::MaybeUninit;
         use proptest::prelude::*;
-        use std::mem::MaybeUninit;
-        use std::os::raw::c_void;
         use widestring::{WideCStr, WideCString};
         use windows_sys::Win32::Foundation::{GetLastError, LocalFree};
         use windows_sys::Win32::Security::Authorization::*;
 
+        #[cfg(feature = "std")]
         proptest! {
             #[test]
             fn test_to_string_windows_parsable(r_sid in arb_security_identifier()) {

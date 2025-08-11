@@ -1,11 +1,11 @@
 use crate::sid::Sid;
-use std::os::raw::c_void;
 
-pub(super) unsafe fn from_raw_parts_mut(src: *mut c_void, dynamic_size_count: usize) -> *mut Sid {
+#[allow(dead_code)]
+pub(super) unsafe fn from_raw_parts_mut(src: *mut (), dynamic_size_count: usize) -> *mut Sid {
     core::ptr::slice_from_raw_parts_mut(src, dynamic_size_count) as *mut Sid
 }
 
-pub(super) const unsafe fn from_raw_parts(src: *mut c_void, dynamic_size_count: usize) -> *mut Sid {
+pub(super) const unsafe fn from_raw_parts(src: *const (), dynamic_size_count: usize) -> *mut Sid {
     core::ptr::slice_from_raw_parts(src, dynamic_size_count) as *mut Sid
 }
 

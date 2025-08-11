@@ -102,22 +102,29 @@
 //! Not supported. The crate relies on allocation and Windows FFI (on Windows).
 
 #![warn(missing_docs)]
-#![warn(rustdoc::missing_doc_code_examples)] // optional: enforces code examples in docs
-
+#![warn(rustdoc::missing_doc_code_examples)]
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg))]
+#[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
 
-pub use security_identifier::{SecurityIdentifier, TokenError};
+#[cfg(feature = "alloc")]
+pub use security_identifier::SecurityIdentifier;
+#[cfg(all(windows, feature = "alloc"))]
+pub use security_identifier::TokenError;
 pub use sid::Sid;
 
 #[cfg(not(has_ptr_metadata))]
 pub(crate) mod polyfils_ptr;
+mod sid_size_info;
+pub(crate) use sid_size_info::SidSizeInfo;
 
-use security_identifier::SidSizeInfo;
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+extern crate alloc;
 
 mod sid_identifier_authority;
-
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 pub(crate) use security_identifier::test::arb_security_identifier;
 
 /// Identifier authority component of a SID (6-byte value).
@@ -135,18 +142,20 @@ pub mod internal;
 ///
 /// See [`ConstSid`] for invariants and examples.
 pub use const_sid::ConstSid;
-
+#[cfg(feature = "std")]
 mod domain_and_name;
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "std"))]
 mod sid_lookup;
 
 /// Pair `DOMAIN\Name` used when resolving a [`Sid`].
 ///
 /// Constructed by Windows account lookup helpers on success.
+#[cfg(feature = "std")]
 pub use domain_and_name::DomainAndName;
 
-#[cfg(windows)]
+#[cfg_attr(docsrs, doc(cfg(all(windows, feature = "std"))))]
+#[cfg(all(windows, feature = "std"))]
 pub use sid_lookup::SidLookupResult;
 
 #[cfg(windows)]

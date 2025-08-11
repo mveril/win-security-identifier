@@ -1,24 +1,27 @@
 use crate::Sid;
 use crate::SidIdentifierAuthority;
+use crate::SidSizeInfo;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
 #[cfg(has_ptr_metadata)]
-use std::ptr::from_raw_parts_mut;
+use core::ptr::from_raw_parts_mut;
 mod token_error;
-pub use token_error::TokenError;
-mod sid_size_info;
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
 use arrayvec::ArrayVec;
-pub(super) use sid_size_info::SidSizeInfo;
-use std::alloc::{self, Layout};
-use std::fmt::{self, Debug, Display};
-use std::mem::MaybeUninit;
-use std::ops::DerefMut;
-use std::os::raw::c_void;
-use std::str::FromStr;
-use std::{borrow::Borrow, ops::Deref, ptr::NonNull};
+use core::alloc::Layout;
+use core::fmt::{self, Debug, Display};
+#[cfg(all(windows, feature = "std"))]
+use core::mem::MaybeUninit;
+use core::ops::DerefMut;
+use core::str::FromStr;
+use core::{ops::Deref, ptr::NonNull};
+#[cfg(feature = "std")]
+use std::{alloc, borrow::Borrow, borrow::ToOwned};
 use thiserror::Error;
-#[cfg(windows)]
+pub use token_error::TokenError;
+#[cfg(all(windows, feature = "std"))]
 use windows_sys::Win32::Security::*;
 
 /// Owned, heap-allocated Windows **Security Identifier** (SID).
@@ -53,7 +56,7 @@ pub struct SecurityIdentifier {
 }
 
 impl Debug for SecurityIdentifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.deref(), f)
     }
 }
@@ -160,7 +163,7 @@ impl SecurityIdentifier {
         // correct metadata (`sub_authority_count` elements in the trailing slice).
         let mut ptr: NonNull<Sid> = unsafe {
             NonNull::new_unchecked(from_raw_parts_mut(
-                mem_ptr as *mut c_void,
+                mem_ptr as *mut (),
                 size_info.sub_authority_count as usize,
             ))
         };
@@ -186,16 +189,15 @@ impl SecurityIdentifier {
     /// println!("{}", sid);
     /// # }
     /// ```
-    #[cfg(windows)]
-    #[cfg_attr(docsrs, doc(cfg(windows)))]
-    pub fn get_current_user_sid<'a>() -> Result<SecurityIdentifier, TokenError> {
+    #[cfg(all(windows, feature = "std"))]
+    pub fn get_current_user_sid() -> Result<SecurityIdentifier, TokenError> {
         use std::os::windows::io::RawHandle;
         use windows_sys::Win32::{
             Foundation::GetLastError,
             System::Threading::{GetCurrentProcess, OpenProcessToken},
         };
         unsafe {
-            use std::ptr;
+            use core::ptr;
 
             let mut token_handle = MaybeUninit::<RawHandle>::uninit();
             if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, token_handle.as_mut_ptr()) == 0 {
@@ -385,11 +387,11 @@ pub(crate) mod test {
     use crate::polyfils_ptr::metadata;
     use proptest::prelude::*;
 
-    use std::hash::Hash;
-    use std::hash::Hasher;
-    use std::ops::Deref;
+    use core::hash::Hash;
+    use core::hash::Hasher;
+    use core::ops::Deref;
     #[cfg(has_ptr_metadata)]
-    use std::ptr::metadata;
+    use core::ptr::metadata;
 
     pub fn arb_security_identifier() -> impl Strategy<Value = SecurityIdentifier> {
         (

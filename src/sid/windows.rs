@@ -22,10 +22,10 @@ impl Sid {
         unsafe {
             // Read sub_authority_count by forging a fat pointer with metadata=0 first.
             let metadata = {
-                let ptr: *const Sid = from_raw_parts(raw, 0);
+                let ptr: *const Sid = from_raw_parts(raw as *const (), 0);
                 (*ptr).sub_authority_count
             };
-            &*from_raw_parts(raw, metadata as usize)
+            &*from_raw_parts(raw as *mut () as *const (), metadata as usize)
         }
     }
 
