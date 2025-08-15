@@ -36,7 +36,7 @@ use std::borrow::ToOwned;
 ///     1,
 ///     SidIdentifierAuthority::nt_authority(),
 ///     [32, 544],
-/// ).unwrap();
+/// );
 /// assert_eq!(ADMIN_ALIAS.to_string(), "S-1-5-32-544");
 /// // It can be converted from (if const is correct) and to owned.
 /// let owned: SecurityIdentifier = ADMIN_ALIAS.into();
@@ -85,8 +85,7 @@ where
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
     /// let s = ConstSid::<2>::new(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
-    /// assert!(s.is_some());
-    /// ```
+    /// assert_eq!(s.to_string(), "S-1-5-32-544")
     #[must_use]
     pub const fn new(
         revision: u8,
@@ -220,11 +219,46 @@ mod test {
     fn test_layout_matches_sid() {
         use core::alloc::Layout;
 
+        use crate::SecurityIdentifier;
         use crate::SidSizeInfo;
         let size = SidSizeInfo {
             sub_authority_count: 1,
         };
         let layout = size.get_layout();
         assert_eq!(Layout::new::<ConstSid<1>>(), layout)
+    }
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_display_and_eq() {
+        use crate::sid;
+        let sid = sid!("S-1-5-32-544");
+
+        let expected_sid = ConstSid::new(1, [0, 0, 0, 0, 0, 5].into(), [32, 544]);
+        assert_eq!(sid, expected_sid);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn test_try_from_sid_and_security_identifier() {
+        let sid = ConstSid::new(1, [5, 0, 0, 0, 0, 0].into(), [21, 42]);
+        let owned: SecurityIdentifier = sid.into();
+        let sid2 = ConstSid::<2>::try_from(owned.as_ref()).unwrap();
+        assert_eq!(sid, sid2);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn test_invalid_try_from() {
+        let sid = ConstSid::new(1, [5, 0, 0, 0, 0, 0].into(), [21, 42, 99]);
+        let owned: SecurityIdentifier = sid.into();
+        assert!(ConstSid::<2>::try_from(owned.as_ref()).is_err());
+    }
+
+    #[test]
+    fn test_const_sid_macro() {
+        let sid = ConstSid::new(1, [5, 0, 0, 0, 0, 0].into(), [32, 544]);
+        assert_eq!(sid.revision, 1);
+        assert_eq!(sid.identifier_authority, [5, 0, 0, 0, 0, 0].into());
+        assert_eq!(sid.sub_authority, [32, 544]);
     }
 }

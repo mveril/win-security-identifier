@@ -83,7 +83,7 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{ConstSid, Sid, SidIdentifierAuthority};
-    /// # let const_sid = ConstSid::new(1, SidIdentifierAuthority::nt_authority(), [32, 544]).unwrap();
+    /// # let const_sid = ConstSid::new(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
     /// # let sid: &Sid = const_sid.as_ref();
     /// unsafe {
     ///     let bytes = sid.as_binary();

@@ -1,0 +1,41 @@
+use parsing::{InvalidSidFormat, SidComponents};
+use proc_macro_crate::{Error as MacroCrateError, FoundCrate, crate_name};
+use proc_macro2::TokenStream;
+use quote::quote_spanned;
+use syn::LitStr;
+
+pub(crate) fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
+    let components: SidComponents = input
+        .value()
+        .parse()
+        .map_err(|e| syn::Error::new_spanned(input, e))?;
+    let revision: u8 = components.revision;
+    let authority = components.identifier_authority;
+    let sub_authority = components.sub_authority.as_slice();
+    let len = sub_authority.len();
+    let root = crate_root("win-security-identifier").map_err(|err| {
+        syn::Error::new(
+            proc_macro2::Span::call_site(),
+            format!("Root crate not found:{err}"),
+        )
+    })?;
+
+    let expanded = quote::quote! {
+        #root::ConstSid::<#len>::new(
+            #revision,
+            [#(#authority),*].into(),
+            [#(#sub_authority),*]
+        )
+    };
+    Ok(expanded)
+}
+
+fn crate_root(name: &str) -> Result<TokenStream, MacroCrateError> {
+    crate_name(name).map(|found| match found {
+        FoundCrate::Name(found_name) => {
+            let ident = syn::Ident::new(&found_name, proc_macro2::Span::call_site());
+            quote::quote!(::#ident)
+        }
+        FoundCrate::Itself => quote::quote!(crate),
+    })
+}

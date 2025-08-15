@@ -1,3 +1,14 @@
+[workspace]
+members = [".", "parsing", "macro"]
+resolver = "2"
+
+[workspace.dependencies]
+arrayvec = "0.7"
+thiserror = "2"
+parsing = { path = "parsing", package = "win-security-identifier-parsing" }
+sid_macro = { path = "macro", package = "win-security-identifier-macro" }
+
+
 [package]
 name = "win-security-identifier"
 version = "0.1.0"
@@ -9,10 +20,13 @@ std = ["alloc"]
 alloc = []
 
 [dependencies]
-arrayvec = "0.7.6"
+arrayvec = { workspace = true }
+parsing = { workspace = true }
 smallvec = "1.15"
-thiserror = "2.0.12"
+thiserror = { workspace = true }
 num_enum = "0.7"
+sid_macro = { workspace = true }
+
 
 [target.'cfg(windows)'.dependencies]
 widestring = "1.0"
