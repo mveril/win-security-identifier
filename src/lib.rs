@@ -62,7 +62,7 @@
 //!     1,
 //!     SidIdentifierAuthority::nt_authority(),
 //!     [32, 544],
-//! ).unwrap();
+//! );
 //!
 //! // Convert to owned SID for operations that need ownership
 //! let owned = win_security_identifier::SecurityIdentifier::from(ADMIN);
@@ -88,7 +88,7 @@
 //! # use win_security_identifier::{SidIdentifierAuthority, ConstSid};
 //! # let sid = win_security_identifier::SecurityIdentifier::from(ConstSid::<2>::new(
 //! #     1, SidIdentifierAuthority::nt_authority(), [32, 544]
-//! # ).unwrap());
+//! # ));
 //! let res = sid.lookup_local_sid().unwrap();
 //! println!("{} => {}", sid, res.domain_name); // e.g. "MACHINE\\User"
 //! // Optionally: map raw type to enum
@@ -118,8 +118,8 @@ pub use sid::Sid;
 #[cfg(not(has_ptr_metadata))]
 pub(crate) mod polyfils_ptr;
 mod sid_size_info;
+pub use sid_macro::sid;
 pub(crate) use sid_size_info::SidSizeInfo;
-
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 extern crate alloc;
 

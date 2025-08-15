@@ -1,0 +1,9 @@
+[package]
+name = "win-security-identifier-parsing"
+version = "0.1.0"
+edition = "2024"
+
+
+[dependencies]
+arrayvec = { workspace = true }
+thiserror = { workspace = true }
