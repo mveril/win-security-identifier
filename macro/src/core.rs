@@ -1,7 +1,7 @@
-use parsing::{InvalidSidFormat, SidComponents};
+use parsing::SidComponents;
 use proc_macro_crate::{Error as MacroCrateError, FoundCrate, crate_name};
 use proc_macro2::TokenStream;
-use quote::quote_spanned;
+use quote::quote;
 use syn::LitStr;
 
 pub(crate) fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
@@ -20,7 +20,7 @@ pub(crate) fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
         )
     })?;
 
-    let expanded = quote::quote! {
+    let expanded = quote! {
         #root::ConstSid::<#len>::new(
             #revision,
             [#(#authority),*].into(),
@@ -34,8 +34,8 @@ fn crate_root(name: &str) -> Result<TokenStream, MacroCrateError> {
     crate_name(name).map(|found| match found {
         FoundCrate::Name(found_name) => {
             let ident = syn::Ident::new(&found_name, proc_macro2::Span::call_site());
-            quote::quote!(::#ident)
+            quote!(::#ident)
         }
-        FoundCrate::Itself => quote::quote!(crate),
+        FoundCrate::Itself => quote!(crate),
     })
 }

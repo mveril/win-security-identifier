@@ -217,24 +217,31 @@ mod test {
     #[cfg(feature = "alloc")]
     #[test]
     fn test_layout_matches_sid() {
-        use core::alloc::Layout;
-
-        use crate::SecurityIdentifier;
         use crate::SidSizeInfo;
+        use core::alloc::Layout;
         let size = SidSizeInfo {
             sub_authority_count: 1,
         };
         let layout = size.get_layout();
         assert_eq!(Layout::new::<ConstSid<1>>(), layout)
     }
-    #[cfg(feature = "std")]
+    #[cfg(feature = "macro")]
     #[test]
-    fn test_display_and_eq() {
+    fn test_parsing() {
         use crate::sid;
         let sid = sid!("S-1-5-32-544");
-
         let expected_sid = ConstSid::new(1, [0, 0, 0, 0, 0, 5].into(), [32, 544]);
         assert_eq!(sid, expected_sid);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn test_display_and_eq() {
+        let formatted = "S-1-5-32-544";
+        let expected_sid: SecurityIdentifier = formatted.parse().unwrap();
+        let sid = ConstSid::new(1, [0, 0, 0, 0, 0, 5].into(), [32, 544]);
+        assert_eq!(sid, expected_sid);
+        assert_eq!(sid.to_string(), formatted)
     }
 
     #[cfg(feature = "alloc")]

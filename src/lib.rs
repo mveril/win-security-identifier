@@ -118,6 +118,7 @@ pub use sid::Sid;
 #[cfg(not(has_ptr_metadata))]
 pub(crate) mod polyfils_ptr;
 mod sid_size_info;
+#[cfg(feature = "macro")]
 pub use sid_macro::sid;
 pub(crate) use sid_size_info::SidSizeInfo;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
@@ -136,6 +137,7 @@ pub use sid_identifier_authority::SidIdentifierAuthority;
 pub(crate) use sid_identifier_authority::test::arb_identifier_authority;
 
 mod const_sid;
+#[doc(hidden)]
 pub mod internal;
 
 /// Const-friendly fixed-size SID (`N` sub-authorities).

@@ -1,8 +1,6 @@
-use crate::ConstSid;
 use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
-use crate::internal::SidLenValid;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
@@ -14,7 +12,6 @@ use parsing::SidComponents;
 mod token_error;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
-use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::fmt::{self, Debug, Display};
 #[cfg(all(windows, feature = "std"))]
@@ -24,7 +21,6 @@ use core::str::FromStr;
 use core::{ops::Deref, ptr::NonNull};
 #[cfg(feature = "std")]
 use std::{alloc, borrow::Borrow, borrow::ToOwned};
-use thiserror::Error;
 pub use token_error::TokenError;
 #[cfg(all(windows, feature = "std"))]
 use windows_sys::Win32::Security::*;
@@ -347,7 +343,6 @@ impl PartialEq for SecurityIdentifier {
         AsRef::<Sid>::as_ref(self) == other.as_ref()
     }
 }
-
 
 #[cfg(test)]
 pub(crate) mod test {

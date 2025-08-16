@@ -15,21 +15,21 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["std"]
+default = ["std", "dep:smallvec"]
 std = ["alloc"]
 alloc = []
+macro = ["dep:sid_macro"]
 
 [dependencies]
-arrayvec = { workspace = true }
 parsing = { workspace = true }
-smallvec = "1.15"
 thiserror = { workspace = true }
 num_enum = "0.7"
-sid_macro = { workspace = true }
+sid_macro = { workspace = true, optional = true }
 
 
 [target.'cfg(windows)'.dependencies]
 widestring = "1.0"
+smallvec = { version = "1.15", optional = true }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.60"
