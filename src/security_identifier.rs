@@ -483,7 +483,7 @@ pub(crate) mod test {
                     prop_assert_eq!(
                         win_bytes,
                         rust_bytes,
-                        "Le SID Windows doit correspondre au SID Rust binaire"
+                        "The Windows SID must match the binary Rust SID."
                     );
                 }
             }
