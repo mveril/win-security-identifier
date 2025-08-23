@@ -1,8 +1,3 @@
-#[cfg(not(has_ptr_metadata))]
-use crate::polyfils_ptr::from_raw_parts;
-#[cfg(has_ptr_metadata)]
-use std::ptr::from_raw_parts;
-
 use std::ffi::OsStr;
 
 use widestring::WideCString;
@@ -12,6 +7,7 @@ use crate::{SidLookupResult, SidType, sid_lookup::SidLookupOperation};
 
 use super::Sid;
 
+
 impl Sid {
     /// Creates a reference to a `Sid` from a raw `PSID` pointer.
     ///
@@ -19,14 +15,7 @@ impl Sid {
     /// The `raw` pointer must point to a valid SID memory block with a correct layout
     /// and live at least as long as the returned reference.
     pub const unsafe fn from_raw<'a>(raw: PSID) -> &'a Self {
-        unsafe {
-            // Read sub_authority_count by forging a fat pointer with metadata=0 first.
-            let metadata = {
-                let ptr: *const Sid = from_raw_parts(raw as *const (), 0);
-                (*ptr).sub_authority_count
-            };
-            &*from_raw_parts(raw as *mut () as *const (), metadata as usize)
-        }
+        unsafe { Self::from_raw_internal(raw as *const ()) }
     }
 
     /// Returns the underlying raw `PSID` pointer.
