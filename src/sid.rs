@@ -12,7 +12,17 @@
 #[cfg(all(windows, feature = "std"))]
 mod windows;
 
-use crate::{SidIdentifierAuthority, SidSizeInfo};
+use crate::InvalidSidFormat;
+
+pub(crate) const MIN_SUBAUTHORITY_COUNT: u8 = 1;
+pub(crate) const MAX_SUBAUTHORITY_COUNT: u8 = 15;
+
+#[cfg(not(has_ptr_metadata))]
+use crate::polyfils_ptr::from_raw_parts;
+#[cfg(has_ptr_metadata)]
+use std::ptr::from_raw_parts;
+
+use crate::{SidIdentifierAuthority, SidSizeInfo, utils::sub_authority_size_guard};
 
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts;
@@ -20,6 +30,7 @@ use core::{
     alloc::Layout,
     fmt::{self, Debug, Display},
     hash::Hash,
+    mem::offset_of,
     slice,
 };
 
@@ -58,16 +69,17 @@ pub struct Sid {
 /// Useful when computing minimal layouts and when manipulating metadata
 /// independently of the dynamic tail.
 #[repr(C)]
-pub(super) struct SidHead {
+pub(crate) struct SidHead {
     pub revision: u8,
     pub sub_authority_count: u8,
     pub identifier_authority: SidIdentifierAuthority,
 }
 
 /// Size (in bytes) of the fixed `SidHead` header.
-pub(super) const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
+pub(crate) const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 /// Alignment (in bytes) of the fixed `SidHead` header.
-pub(super) const SID_HEAD_ALIGN: usize = core::mem::align_of::<SidHead>();
+#[allow(dead_code)]
+pub(crate) const SID_HEAD_ALIGN: usize = core::mem::align_of::<SidHead>();
 
 impl Sid {
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
@@ -83,19 +95,30 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{ConstSid, Sid, SidIdentifierAuthority};
-    /// # let const_sid = ConstSid::new(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
+    /// # let const_sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
     /// # let sid: &Sid = const_sid.as_ref();
     /// unsafe {
     ///     let bytes = sid.as_binary();
     ///     assert_eq!(bytes, [1, 2, 0, 0, 0, 0, 0, 5, 32, 0, 0, 0, 32, 2, 0, 0]);
     /// }
     /// ```
-    pub unsafe fn as_binary(&self) -> &[u8] {
+    pub const fn as_binary(&self) -> &[u8] {
         unsafe {
             slice::from_raw_parts(
                 self as *const Self as *const u8,
                 self.get_current_min_layout().size(),
             )
+        }
+    }
+
+    const unsafe fn from_raw_internal<'a>(raw: *const ()) -> &'a Self {
+        unsafe {
+            // Read sub_authority_count by forging a fat pointer with metadata=0 first.
+            let metadata = {
+                let ptr: *const Sid = from_raw_parts(raw, 0);
+                (*ptr).sub_authority_count
+            };
+            &*from_raw_parts(raw as *mut () as *const (), metadata as usize)
         }
     }
 
@@ -145,11 +168,11 @@ impl Sid {
     /// - validate backing allocations,
     /// - compute binary slice lengths,
     /// - interoperate with low-level allocators.
-    pub fn get_current_min_layout(&self) -> Layout {
-        let size_info = SidSizeInfo {
-            sub_authority_count: self.sub_authority_count,
-        };
-        size_info.get_layout()
+    pub const fn get_current_min_layout(&self) -> Layout {
+        match SidSizeInfo::from_count(self.sub_authority_count) {
+            Some(info) => info.get_layout(),
+            None => unreachable!(),
+        }
     }
 }
 
@@ -194,6 +217,35 @@ impl Hash for Sid {
     }
 }
 
+impl TryFrom<&[u8]> for &Sid {
+    type Error = InvalidSidFormat;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let min_size = match SidSizeInfo::from_count(1) {
+            Some(info) => info.get_layout().size(),
+            None => unreachable!(),
+        };
+        if value.len() < min_size {
+            return Err(InvalidSidFormat);
+        }
+
+        let count_offset = offset_of!(Sid, sub_authority_count);
+        let count = value[count_offset];
+
+        if !sub_authority_size_guard(count as usize) {
+            return Err(InvalidSidFormat);
+        }
+
+        let size = match SidSizeInfo::from_count(count) {
+            Some(info) => info.get_layout().size(),
+            None => unreachable!(),
+        };
+        if value.len() != size {
+            return Err(InvalidSidFormat);
+        }
+        Ok(unsafe { Sid::from_raw_internal(value.as_ptr() as *const ()) })
+    }
+}
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "alloc")]

@@ -5,8 +5,6 @@ use crate::polyfils_ptr::from_raw_parts;
 use crate::{Sid, SidIdentifierAuthority, internal::SidLenValid};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::borrow::ToOwned;
-#[cfg(feature = "alloc")]
-use core::ops::Deref;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts;
 use core::{
@@ -34,7 +32,7 @@ use std::borrow::ToOwned;
 /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority, SecurityIdentifier};
 /// const ADMIN_ALIAS: ConstSid<2> = ConstSid::new(
 ///     1,
-///     SidIdentifierAuthority::nt_authority(),
+///     SidIdentifierAuthority::NT_AUTHORITY,
 ///     [32, 544],
 /// );
 /// assert_eq!(ADMIN_ALIAS.to_string(), "S-1-5-32-544");
@@ -65,11 +63,9 @@ impl<const N: usize> AsRef<Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline(always)]
     fn as_ref(&self) -> &Sid {
-        // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
-        // matches `sub_authority.len()`. The header layout is compatible
-        // (`repr(C)`), and the trailing slice length equals N.
-        unsafe { &*from_raw_parts(self as *const Self as *mut Self as *mut (), N) }
+        self.as_sid()
     }
 }
 
@@ -84,7 +80,7 @@ where
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
-    /// let s = ConstSid::<2>::new(1, SidIdentifierAuthority::nt_authority(), [32, 544]);
+    /// let s = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
     /// assert_eq!(s.to_string(), "S-1-5-32-544")
     #[must_use]
     pub const fn new(
@@ -99,6 +95,58 @@ where
             identifier_authority,
         }
     }
+
+    /// Returns a reference to this `ConstSid` as a dynamically-sized [`Sid`].
+    ///
+    /// This allows treating the fixed-size `ConstSid` as a regular `Sid`
+    /// with a trailing slice of sub-authorities.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority, Sid};
+    /// const ADMIN: ConstSid<2> = ConstSid::new(
+    ///     1,
+    ///     SidIdentifierAuthority::NT_AUTHORITY,
+    ///     [32, 544],
+    /// );
+    /// let sid: &Sid = ADMIN.as_sid();
+    /// assert_eq!(sid.to_string(), "S-1-5-32-544");
+    /// ```
+    pub const fn as_sid(&self) -> &Sid {
+        // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
+        // matches `sub_authority.len()`. The header layout is compatible
+        // (`repr(C)`), and the trailing slice length equals N.
+        unsafe { &*from_raw_parts(self as *const Self as *mut Self as *mut (), N) }
+    }
+
+    /// Returns the raw binary representation of this `ConstSid` as a byte slice.
+    ///
+    /// The returned slice contains the full in-memory layout of the SID,
+    /// including header and sub-authorities, in the same format as used by Windows.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
+    /// const ADMIN: ConstSid<2> = ConstSid::new(
+    ///     1,
+    ///     SidIdentifierAuthority::NT_AUTHORITY,
+    ///     [32, 544],
+    /// );
+    /// let bytes = ADMIN.as_bytes();
+    /// // First byte is the revision
+    /// assert_eq!(bytes[0], 1);
+    /// // Identifier authority is NT (5)
+    /// assert_eq!(bytes[7], 5);
+    /// // SubAuthorities: 32 (0x20 0x00 0x00 0x00) and 544 (0x20 0x02 0x00 0x00)
+    /// assert_eq!(&bytes[8..12], &[32, 0, 0, 0]);
+    /// assert_eq!(&bytes[12..16], &[32, 2, 0, 0]);
+    /// ```
+    pub const fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            let binary_ptr = self as *const Self as *const u8;
+            core::slice::from_raw_parts(binary_ptr, size_of::<Self>())
+        }
+    }
 }
 
 impl<const N: usize> PartialEq<Sid> for ConstSid<N>
@@ -106,7 +154,7 @@ where
     [u32; N]: SidLenValid,
 {
     fn eq(&self, other: &Sid) -> bool {
-        self.as_ref().eq(other)
+        self.as_sid().eq(other)
     }
 }
 
@@ -115,7 +163,7 @@ where
     [u32; N]: SidLenValid,
 {
     fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_ref())
+        self.eq(other.as_sid())
     }
 }
 
@@ -134,7 +182,7 @@ where
     [u32; N]: SidLenValid,
 {
     fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_ref())
+        self.eq(other.as_sid())
     }
 }
 
@@ -171,7 +219,7 @@ where
     type Error = TryFromSliceError;
 
     fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
-        let sid: &Sid = value.deref();
+        let sid: &Sid = value.as_sid();
         Self::try_from(sid)
     }
 }
@@ -181,7 +229,7 @@ where
     [u32; N]: SidLenValid,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sid: &Sid = self.as_ref();
+        let sid: &Sid = self.as_sid();
         Display::fmt(sid, f)
     }
 }
@@ -200,6 +248,8 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::ConstSid;
+
     #[cfg(feature = "std")]
     use super::*;
     #[cfg(feature = "std")]
@@ -219,9 +269,7 @@ mod test {
     fn test_layout_matches_sid() {
         use crate::SidSizeInfo;
         use core::alloc::Layout;
-        let size = SidSizeInfo {
-            sub_authority_count: 1,
-        };
+        let size = SidSizeInfo::from_count(1).unwrap();
         let layout = size.get_layout();
         assert_eq!(Layout::new::<ConstSid<1>>(), layout)
     }

@@ -1,3 +1,4 @@
+pub use crate::InvalidSidFormat;
 use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
@@ -7,7 +8,6 @@ use crate::utils::sub_authority_size_guard;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
 use parsing;
-pub use parsing::InvalidSidFormat;
 use parsing::SidComponents;
 mod token_error;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
@@ -45,7 +45,7 @@ use windows_sys::Win32::Security::*;
 /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
 /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
 /// let revision = 1u8;
-/// let ia = SidIdentifierAuthority::nt_authority(); // example ctor
+/// let ia = SidIdentifierAuthority::NT_AUTHORITY; // example ctor
 /// let subs = [32u32, 544u32];
 /// let sid = SecurityIdentifier::try_new(revision, ia, &subs)
 ///     .expect("valid SID parts");
@@ -77,11 +77,11 @@ impl SecurityIdentifier {
     /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
     /// let sid = SecurityIdentifier::try_new(
     ///     1,
-    ///     SidIdentifierAuthority::nt_authority(),
+    ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32u32, 544u32]
     /// ).unwrap();
     /// assert_eq!(sid.revision, 1);
-    /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::nt_authority());
+    /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
@@ -97,9 +97,8 @@ impl SecurityIdentifier {
             unsafe {
                 // SAFETY: allocation size is computed from `SidSizeInfo` using
                 // a validated sub-authority count.
-                let mut instance = Self::uninit(SidSizeInfo {
-                    sub_authority_count,
-                });
+                let mut instance =
+                    Self::uninit(SidSizeInfo::from_count(sub_authority_count).unwrap());
                 instance.sid.as_mut().revision = revision;
                 instance.sid.as_mut().sub_authority_count = sub_authority_count;
                 instance.sid.as_mut().identifier_authority = identifier_authority;
@@ -129,12 +128,12 @@ impl SecurityIdentifier {
     /// let sid = unsafe {
     ///     SecurityIdentifier::new_unchecked(
     ///         1,
-    ///         SidIdentifierAuthority::nt_authority(),
+    ///         SidIdentifierAuthority::NT_AUTHORITY,
     ///         [32u32, 544u32],
     ///     )
     /// };
     /// assert_eq!(sid.revision, 1);
-    /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::nt_authority());
+    /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
     /// ```
     pub unsafe fn new_unchecked<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
@@ -162,15 +161,16 @@ impl SecurityIdentifier {
         }
         // SAFETY: `from_raw_parts_mut` builds a fat pointer to `Sid` with the
         // correct metadata (`sub_authority_count` elements in the trailing slice).
+        let sub_authority_count = size_info.get_sub_authority_count();
         let mut ptr: NonNull<Sid> = unsafe {
             NonNull::new_unchecked(from_raw_parts_mut(
                 mem_ptr as *mut (),
-                size_info.sub_authority_count as usize,
+                sub_authority_count as usize,
             ))
         };
         // Initialize mandatory header field needed by later methods.
         unsafe {
-            ptr.as_mut().sub_authority_count = size_info.sub_authority_count;
+            ptr.as_mut().sub_authority_count = sub_authority_count;
         }
 
         Self { sid: ptr, layout }
@@ -191,7 +191,7 @@ impl SecurityIdentifier {
     /// # }
     /// ```
     #[cfg(all(windows, feature = "std"))]
-    pub fn get_current_user_sid() -> Result<SecurityIdentifier, TokenError> {
+    pub fn get_current_user_sid() -> Result<Self, TokenError> {
         use std::os::windows::io::RawHandle;
         use windows_sys::Win32::{
             Foundation::GetLastError,
@@ -231,6 +231,65 @@ impl SecurityIdentifier {
             Ok(sid.to_owned())
         }
     }
+
+    /// Creates a `SecurityIdentifier` from a byte slice.
+    ///
+    /// This function attempts to parse a byte slice into a valid `SecurityIdentifier`.
+    ///
+    /// # Parameters
+    /// - `bytes`: A type that can be referenced as a byte slice (`AsRef<[u8]>`).
+    ///
+    /// # Errors
+    /// - [InvalidSidFormat] If the byte slice is not a valid SID format.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{SecurityIdentifier, InvalidSidFormat};
+    /// // SID: S-1-5-32-544 (Administrators)
+    /// let bytes: [u8; 16] = [
+    ///     1,    // Revision
+    ///     2,    // SubAuthorityCount
+    ///     0, 0, 0, 0, 0, 5, // IdentifierAuthority = NT AUTHORITY
+    ///     32, 0, 0, 0,      // SubAuthority[0] = 32
+    ///     32, 2, 0, 0       // SubAuthority[1] = 544 (0x220 little endian)
+    /// ];
+    /// let sid = SecurityIdentifier::from_bytes(&bytes);
+    /// assert!(sid.is_ok());
+    /// assert!(sid.unwrap().to_string() == "S-1-5-32-544")
+    /// ```
+    #[inline]
+    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, InvalidSidFormat> {
+        let bytes = bytes.as_ref();
+        bytes.try_into()
+    }
+    /// Returns a reference to this `ConstSid` as a dynamically-sized [`Sid`].
+    ///
+    /// This allows treating the fixed-size `ConstSid` as a regular `Sid`
+    /// with a trailing slice of sub-authorities.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority, Sid};
+    /// const ADMIN: ConstSid<2> = ConstSid::new(
+    ///     1,
+    ///     SidIdentifierAuthority::NT_AUTHORITY,
+    ///     [32, 544],
+    /// );
+    /// let sid: &Sid = ADMIN.as_sid();
+    /// assert_eq!(sid.to_string(), "S-1-5-32-544");
+    /// ```
+    pub const fn as_sid(&self) -> &Sid {
+        unsafe { self.sid.as_ref() }
+    }
+}
+
+impl TryFrom<&[u8]> for SecurityIdentifier {
+    type Error = InvalidSidFormat;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let sid: &Sid = value.try_into()?;
+        Ok(sid.to_owned())
+    }
 }
 
 impl FromStr for SecurityIdentifier {
@@ -254,7 +313,8 @@ impl ToOwned for Sid {
     fn to_owned(&self) -> Self::Owned {
         unsafe {
             let binary = self.as_binary();
-            let mut instance = Self::Owned::uninit(SidSizeInfo::from_full_size(binary.len()));
+            let mut instance =
+                Self::Owned::uninit(SidSizeInfo::from_full_size(binary.len()).unwrap_unchecked());
             instance.as_binary_mut().copy_from_slice(binary);
             instance
         }
@@ -301,11 +361,8 @@ impl Drop for SecurityIdentifier {
 
 impl Clone for SecurityIdentifier {
     fn clone(&self) -> Self {
-        let mut sid = unsafe {
-            Self::uninit(SidSizeInfo {
-                sub_authority_count: self.sub_authority_count,
-            })
-        };
+        let mut sid =
+            unsafe { Self::uninit(SidSizeInfo::from_count(self.sub_authority_count).unwrap()) };
         sid.clone_from(self);
         sid
     }

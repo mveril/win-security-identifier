@@ -48,7 +48,7 @@
 //!
 //! let sid = SecurityIdentifier::try_new(
 //!     1, // revision
-//!     SidIdentifierAuthority::nt_authority(),
+//!     SidIdentifierAuthority::NT_AUTHORITY,
 //!     [32u32, 544u32], // BUILTIN\Administrators => S-1-5-32-544
 //! ).expect("valid SID");
 //! assert_eq!(sid.to_string(), "S-1-5-32-544");
@@ -60,7 +60,7 @@
 //!
 //! const ADMIN: ConstSid<2> = ConstSid::new(
 //!     1,
-//!     SidIdentifierAuthority::nt_authority(),
+//!     SidIdentifierAuthority::NT_AUTHORITY,
 //!     [32, 544],
 //! );
 //!
@@ -87,7 +87,7 @@
 //! // ... obtain a `SecurityIdentifier` or `&Sid` named `sid`
 //! # use win_security_identifier::{SidIdentifierAuthority, ConstSid};
 //! # let sid = win_security_identifier::SecurityIdentifier::from(ConstSid::<2>::new(
-//! #     1, SidIdentifierAuthority::nt_authority(), [32, 544]
+//! #     1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]
 //! # ));
 //! let res = sid.lookup_local_sid().unwrap();
 //! println!("{} => {}", sid, res.domain_name); // e.g. "MACHINE\\User"
@@ -163,6 +163,7 @@ pub use sid_lookup::SidLookupResult;
 #[cfg(windows)]
 mod sid_type;
 
+pub use parsing::InvalidSidFormat;
 #[cfg(windows)]
 /// Rust representation of `SID_NAME_USE` (Windows).
 ///
@@ -171,3 +172,6 @@ pub use sid_type::SidType;
 
 /// Internal utilities for validation and layout calculations.
 pub(crate) mod utils;
+
+#[cfg(feature = "serde")]
+mod serde_impl;
