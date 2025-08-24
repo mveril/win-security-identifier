@@ -56,7 +56,7 @@ impl SidIdentifierAuthority {
 
 impl Default for SidIdentifierAuthority {
     fn default() -> Self {
-        unsafe { core::mem::zeroed() }
+        Self::NULL_AUTHORITY
     }
 }
 
