@@ -30,18 +30,14 @@ use windows_sys::Win32::Security::*;
 /// This type owns the underlying SID memory and guarantees:
 /// - Proper allocation according to the number of sub-authorities.
 /// - Proper deallocation via `Drop`.
-/// - Safe read/write access through `Deref`/`DerefMut` to the inner `Sid`.
+/// - Safe read/write access through `Deref`/`DerefMut` to the inner [Sid].
 ///
 /// It can be constructed from raw parts, parsed from text, cloned,
 /// or retrieved from the current user's access token (Windows-only).
 ///
-/// # Invariants
-/// - `sid` always points to a valid, properly sized `Sid` allocation.
-/// - `layout` matches the allocation used for `sid`.
-/// - `sub_authority_count` is within the valid Windows range (1..=15).
 ///
 /// # Examples
-/// ```no_run
+/// ```rust
 /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
 /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
 /// let revision = 1u8;

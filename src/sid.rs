@@ -38,9 +38,9 @@ use core::{
 ///
 /// This is a **DST** (`[u32]` tail) representing:
 /// - `revision`: SID revision (commonly `1`),
-/// - `sub_authority_count`: number of `u32` elements in the trailing slice,
+/// - `sub_authority_count`: number of [u32] elements in the trailing slice,
 /// - `identifier_authority`: 6-byte identifier authority,
-/// - `sub_authority`: trailing slice of `u32` elements (length = `sub_authority_count`).
+/// - `sub_authority`: trailing slice of [u32] elements (length = `sub_authority_count`).
 ///
 /// # Layout
 /// The layout matches the Windows SID memory representation:
@@ -94,9 +94,9 @@ impl Sid {
     ///
     /// # Examples
     /// ```rust
-    /// # use win_security_identifier::{ConstSid, Sid, SidIdentifierAuthority};
-    /// # let const_sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
-    /// # let sid: &Sid = const_sid.as_ref();
+    /// # use win_security_identifier::{ConstSid, well_known, Sid, SidIdentifierAuthority};
+    /// let const_sid = well_known::BUILTIN_ADMINISTRATORS;
+    /// let sid: &Sid = const_sid.as_ref();
     /// unsafe {
     ///     let bytes = sid.as_binary();
     ///     assert_eq!(bytes, [1, 2, 0, 0, 0, 0, 0, 5, 32, 0, 0, 0, 32, 2, 0, 0]);
@@ -147,10 +147,11 @@ impl Sid {
     /// that maintain invariants.
     ///
     /// # Examples
-    /// ```no_run
-    /// # let sid: &win_security_identifier::Sid = unimplemented!();
+    /// ```rust
+    /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
+    /// let sid: &Sid = ConstSid::<1>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [1]).as_sid();
     /// let subs = sid.get_sub_authorities();
-    /// assert_eq!(subs.len(), 1);
+    /// assert_eq!(subs, &[1]);
     /// ```
     pub fn get_sub_authorities(&self) -> &[u32] {
         unsafe {

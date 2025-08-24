@@ -19,9 +19,9 @@ use std::borrow::ToOwned;
 ///
 /// `ConstSid<N>` stores the SID header plus exactly `N` sub-authorities as a
 /// fixed-size array, making it usable in `const` contexts and suitable for
-/// static embeddings. It can be viewed as a dynamically-sized `Sid` via
-/// `AsRef<Sid>`, converted to an owning `SecurityIdentifier`, or created from
-/// an existing `Sid` when the sub-authority count matches `N`.
+/// static embeddings. It can be viewed as a dynamically-sized [Sid] via
+/// `AsRef<Sid>` or as_sid(), converted to an owning [SecurityIdentifier], or created from
+/// an existing [Sid] when the sub-authority count matches `N`.
 ///
 /// # Invariants
 /// - `sub_authority_count == N` at all times.
@@ -29,12 +29,8 @@ use std::borrow::ToOwned;
 ///
 /// # Examples
 /// ```rust
-/// # use win_security_identifier::{ConstSid, SidIdentifierAuthority, SecurityIdentifier};
-/// const ADMIN_ALIAS: ConstSid<2> = ConstSid::new(
-///     1,
-///     SidIdentifierAuthority::NT_AUTHORITY,
-///     [32, 544],
-/// );
+/// # use win_security_identifier::{ConstSid, well_known, SidIdentifierAuthority, SecurityIdentifier};
+/// const ADMIN_ALIAS: ConstSid<2> = well_known::BUILTIN_ADMINISTRATORS;
 /// assert_eq!(ADMIN_ALIAS.to_string(), "S-1-5-32-544");
 /// // It can be converted from (if const is correct) and to owned.
 /// let owned: SecurityIdentifier = ADMIN_ALIAS.into();
@@ -103,13 +99,8 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority, Sid};
-    /// const ADMIN: ConstSid<2> = ConstSid::new(
-    ///     1,
-    ///     SidIdentifierAuthority::NT_AUTHORITY,
-    ///     [32, 544],
-    /// );
-    /// let sid: &Sid = ADMIN.as_sid();
+    /// # use win_security_identifier::{well_known, Sid};
+    /// let sid: &Sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
     /// assert_eq!(sid.to_string(), "S-1-5-32-544");
     /// ```
     pub const fn as_sid(&self) -> &Sid {
@@ -146,6 +137,21 @@ where
             let binary_ptr = self as *const Self as *const u8;
             core::slice::from_raw_parts(binary_ptr, size_of::<Self>())
         }
+    }
+
+    /// Returns the last sub-authority value (Relative Identifier, or RID) of this [ConstSid].
+    ///
+    /// The RID is commonly used to identify a specific user, group, or entity within a domain,
+    /// and is the last element in the sub-authority array.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
+    /// let sid = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
+    /// assert_eq!(sid.rid(), 544);
+    /// ```
+    pub const fn rid(&self) -> u32 {
+        self.sub_authority[self.sub_authority_count as usize - 1]
     }
 }
 
@@ -248,15 +254,15 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::ConstSid;
-
     #[cfg(feature = "std")]
     use super::*;
     #[cfg(feature = "std")]
     #[test]
     pub fn test_hash() {
         use std::hash::{DefaultHasher, Hash, Hasher};
-        let sid = ConstSid::new(1, [1, 0, 0, 0, 0, 0].into(), [0; 1]);
+
+        use crate::well_known;
+        let sid = well_known::LOCAL_SYSTEM;
         let mut hasher1 = DefaultHasher::default();
         let mut hasher2 = DefaultHasher::default();
         sid.hash(&mut hasher1);
@@ -276,18 +282,20 @@ mod test {
     #[cfg(feature = "macro")]
     #[test]
     fn test_parsing() {
-        use crate::sid;
+        use crate::{sid, well_known};
         let sid = sid!("S-1-5-32-544");
-        let expected_sid = ConstSid::new(1, [0, 0, 0, 0, 0, 5].into(), [32, 544]);
+        let expected_sid = well_known::BUILTIN_ADMINISTRATORS;
         assert_eq!(sid, expected_sid);
     }
 
     #[cfg(feature = "alloc")]
     #[test]
     fn test_display_and_eq() {
+        use crate::well_known;
+
         let formatted = "S-1-5-32-544";
         let expected_sid: SecurityIdentifier = formatted.parse().unwrap();
-        let sid = ConstSid::new(1, [0, 0, 0, 0, 0, 5].into(), [32, 544]);
+        let sid = well_known::BUILTIN_ADMINISTRATORS;
         assert_eq!(sid, expected_sid);
         assert_eq!(sid.to_string(), formatted)
     }
@@ -295,7 +303,7 @@ mod test {
     #[cfg(feature = "alloc")]
     #[test]
     fn test_try_from_sid_and_security_identifier() {
-        let sid = ConstSid::new(1, [5, 0, 0, 0, 0, 0].into(), [21, 42]);
+        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [21, 42]);
         let owned: SecurityIdentifier = sid.into();
         let sid2 = ConstSid::<2>::try_from(owned.as_ref()).unwrap();
         assert_eq!(sid, sid2);
@@ -304,16 +312,19 @@ mod test {
     #[cfg(feature = "alloc")]
     #[test]
     fn test_invalid_try_from() {
-        let sid = ConstSid::new(1, [5, 0, 0, 0, 0, 0].into(), [21, 42, 99]);
+        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [21, 42, 99]);
         let owned: SecurityIdentifier = sid.into();
         assert!(ConstSid::<2>::try_from(owned.as_ref()).is_err());
     }
 
     #[test]
     fn test_const_sid_macro() {
-        let sid = ConstSid::new(1, [5, 0, 0, 0, 0, 0].into(), [32, 544]);
+        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
         assert_eq!(sid.revision, 1);
-        assert_eq!(sid.identifier_authority, [5, 0, 0, 0, 0, 0].into());
+        assert_eq!(
+            sid.identifier_authority,
+            SidIdentifierAuthority::NT_AUTHORITY
+        );
         assert_eq!(sid.sub_authority, [32, 544]);
     }
 }
