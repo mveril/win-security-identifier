@@ -1,6 +1,7 @@
 use version_check::supports_feature;
 
 fn main() {
+    // Detect ptr_metadata (trait presence)
     check_feature(
         "ptr_metadata",
         "core::ptr::Pointee",
@@ -8,10 +9,21 @@ fn main() {
         true,
     );
 
+    // Detect Layout::for_value_raw (expression presence)
     check_feature(
         "layout_for_ptr",
         "std::alloc::Layout::for_value_raw::<[u8]>(std::ptr::null())",
         "has_layout_for_ptr",
+        false,
+    );
+
+    // Detect MaybeUninit slice APIs (slice_assume_init_ref/mut)
+    // Probe by referring to the function item with a concrete type and coercing to a fn pointer.
+    check_feature(
+        "maybe_uninit_slice",
+        "(core::mem::MaybeUninit::<u8>::slice_assume_init_ref \
+          as unsafe fn(&[core::mem::MaybeUninit<u8>]) -> &[u8])",
+        "has_maybe_uninit_slice",
         false,
     );
 }

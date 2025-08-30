@@ -225,8 +225,7 @@ where
     type Error = TryFromSliceError;
 
     fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
-        let sid: &Sid = value.as_sid();
-        Self::try_from(sid)
+        Self::try_from(value.as_sid())
     }
 }
 
@@ -235,8 +234,7 @@ where
     [u32; N]: SidLenValid,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sid: &Sid = self.as_sid();
-        Display::fmt(sid, f)
+        write! {f, "{}", self.as_sid()}
     }
 }
 

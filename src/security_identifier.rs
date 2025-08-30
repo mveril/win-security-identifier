@@ -12,7 +12,7 @@ use parsing::SidComponents;
 mod token_error;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
-use core::alloc::Layout;
+use ::core::alloc::Layout;
 use core::fmt::{self, Debug, Display};
 #[cfg(all(windows, feature = "std"))]
 use core::mem::MaybeUninit;
