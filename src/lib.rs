@@ -105,6 +105,13 @@
 #![warn(rustdoc::missing_doc_code_examples)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg))]
+#![cfg_attr(needs_ptr_metadata_feature, feature(ptr_metadata))]
+#![cfg_attr(needs_layout_for_ptr_feature, feature(layout_for_ptr))]
+#![cfg_attr(needs_maybe_uninit_slice_feature, feature(maybe_uninit_slice))]
+#![cfg_attr(
+    needs_maybe_uninit_write_slice_feature,
+    feature(maybe_uninit_write_slice)
+)]
 #[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
@@ -175,4 +182,6 @@ pub(crate) mod utils;
 
 #[cfg(feature = "serde")]
 mod serde_impl;
+pub mod stack_sid;
 pub mod well_known;
+pub use stack_sid::StackSid;

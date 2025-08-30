@@ -24,8 +24,6 @@ use std::ptr::from_raw_parts;
 
 use crate::{SidIdentifierAuthority, SidSizeInfo, utils::sub_authority_size_guard};
 
-#[cfg(has_ptr_metadata)]
-use core::ptr::from_raw_parts;
 use core::{
     alloc::Layout,
     fmt::{self, Debug, Display},
@@ -153,7 +151,7 @@ impl Sid {
     /// let subs = sid.get_sub_authorities();
     /// assert_eq!(subs, &[1]);
     /// ```
-    pub fn get_sub_authorities(&self) -> &[u32] {
+    pub const fn get_sub_authorities(&self) -> &[u32] {
         unsafe {
             slice::from_raw_parts(
                 self.sub_authority.as_ptr(),
@@ -204,7 +202,7 @@ impl Display for Sid {
 
 impl PartialEq for Sid {
     fn eq(&self, other: &Self) -> bool {
-        unsafe { self.as_binary() == other.as_binary() }
+        self.as_binary() == other.as_binary()
     }
 }
 
