@@ -1,12 +1,12 @@
 #[cfg(feature = "alloc")]
 use crate::SecurityIdentifier;
 #[cfg(not(has_ptr_metadata))]
-use crate::polyfils_ptr::from_raw_parts;
+use crate::polyfils_ptr::{from_raw_parts, from_raw_parts_mut};
 use crate::{Sid, SidIdentifierAuthority, internal::SidLenValid};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::borrow::ToOwned;
 #[cfg(has_ptr_metadata)]
-use core::ptr::from_raw_parts;
+use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
     array::TryFromSliceError,
     fmt::{self, Display},
@@ -108,6 +108,41 @@ where
         // matches `sub_authority.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
         unsafe { &*from_raw_parts(self as *const Self as *mut Self as *mut (), N) }
+    }
+
+    /// Returns a mut reference to this `ConstSid` as a dynamically-sized [`Sid`].
+    ///
+    /// This allows treating the fixed-size `ConstSid` as a regular `Sid`
+    /// with a trailing slice of sub-authorities.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{ConstSid, Sid, SidIdentifierAuthority};
+    /// #
+    /// // Create a mutable ConstSid with three sub-authorities:
+    /// // S-1-5-21-1000 (revision 1, authority 5, sub-authorities [21, 1000])
+    /// let mut cs = ConstSid::<3>::new(
+    ///     1,
+    ///     SidIdentifierAuthority::NT_AUTHORITY,
+    ///     [21u32, 100u32, 0u32],
+    /// );
+    ///
+    /// // Get a mutable `&mut Sid` referencing the same memory.
+    /// // From here we can mutate sub-authorities in-place without re-allocating.
+    /// let sid_mut: &mut Sid = cs.as_sid_mut();
+    ///
+    /// // Modify the last sub-authority in-place.
+    /// // (Assumes the `Sid` type exposes a mutable slice accessor.)
+    /// sid_mut.identifier_authority = SidIdentifierAuthority::NULL_AUTHORITY;
+    ///
+    /// // The string representation reflects the in-place change.
+    /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
+    /// ```
+    pub const fn as_sid_mut(&self) -> &mut Sid {
+        // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
+        // matches `sub_authority.len()`. The header layout is compatible
+        // (`repr(C)`), and the trailing slice length equals N.
+        unsafe { &mut *from_raw_parts_mut(self as *const Self as *mut Self as *mut (), N) }
     }
 
     /// Returns the raw binary representation of this `ConstSid` as a byte slice.

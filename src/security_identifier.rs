@@ -264,13 +264,13 @@ impl SecurityIdentifier {
     ///
     /// # Examples
     /// ```rust
-    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority, Sid};
-    /// const ADMIN: ConstSid<2> = ConstSid::new(
+    /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority, Sid};
+    /// let admin = SecurityIdentifier::try_new(
     ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32, 544],
-    /// );
-    /// let sid: &Sid = ADMIN.as_sid();
+    /// ).unwrap();
+    /// let sid: &Sid = admin.as_sid();
     /// assert_eq!(sid.to_string(), "S-1-5-32-544");
     /// ```
     pub const fn as_sid(&self) -> &Sid {
