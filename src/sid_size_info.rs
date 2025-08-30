@@ -16,7 +16,7 @@ impl SidSizeInfo {
     pub const fn from_count(sub_authority_count: u8) -> Option<SidSizeInfo> {
         if sub_authority_size_guard(sub_authority_count as usize) {
             Some(Self {
-                sub_authority_count: sub_authority_count,
+                sub_authority_count,
             })
         } else {
             None
@@ -40,12 +40,12 @@ impl SidSizeInfo {
 
         // Remaining must be multiple of u32
         let remaining = size - SID_HEAD_SIZE;
-        if remaining % core::mem::size_of::<u32>() != 0 {
+        if !remaining.is_multiple_of(core::mem::size_of::<u32>()) {
             return None;
         }
 
         // Number of sub-authorities
-        let sub_authority_count = (remaining / core::mem::size_of::<u32>());
+        let sub_authority_count = remaining / core::mem::size_of::<u32>();
         if sub_authority_count > u8::MAX as usize {
             return None;
         }

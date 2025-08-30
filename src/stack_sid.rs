@@ -56,7 +56,7 @@ impl StackSid {
                 copy_nonoverlapping(
                     sub_authority.as_ptr(),
                     array_ptr,
-                    sub_authority.len() as usize,
+                    sub_authority.len(),
                 );
             };
             Some(Self {
