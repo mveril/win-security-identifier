@@ -405,6 +405,7 @@ pub(crate) mod test {
     use crate::polyfils_ptr::metadata;
     use proptest::prelude::*;
 
+    use core::alloc::Layout;
     use core::hash::Hash;
     use core::hash::Hasher;
     use core::ops::Deref;

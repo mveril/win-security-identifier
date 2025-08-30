@@ -147,7 +147,8 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
-    /// let sid: &Sid = ConstSid::<1>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [1]).as_sid();
+    /// let const_sid = ConstSid::<1>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [1]);
+    /// let sid = const_sid.as_sid();
     /// let subs = sid.get_sub_authorities();
     /// assert_eq!(subs, &[1]);
     /// ```
