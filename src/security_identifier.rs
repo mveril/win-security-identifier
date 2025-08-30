@@ -7,7 +7,6 @@ use crate::polyfils_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
-use parsing;
 use parsing::SidComponents;
 mod token_error;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
