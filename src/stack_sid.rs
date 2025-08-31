@@ -1,11 +1,13 @@
+use crate::internal::SidLenValid;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::{from_raw_parts, from_raw_parts_mut};
+use core::hash::Hash;
 #[cfg(has_ptr_metadata)]
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
 use crate::utils::sub_authority_size_guard;
-use crate::{Sid, SidIdentifierAuthority};
+use crate::{ConstSid, Sid, SidIdentifierAuthority};
 use core::mem::MaybeUninit;
 use core::ptr::copy_nonoverlapping;
 use core::str::FromStr;
@@ -162,5 +164,29 @@ impl FromStr for StackSid {
 impl Display for StackSid {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_sid())
+    }
+}
+
+impl PartialEq for StackSid {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_sid().eq(other.as_sid())
+    }
+}
+
+impl Hash for StackSid {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.as_sid().hash(state);
+    }
+}
+
+impl PartialEq<Sid> for StackSid {
+    fn eq(&self, other: &Sid) -> bool {
+        self.as_sid().eq(other)
+    }
+}
+
+impl PartialEq<StackSid> for Sid {
+    fn eq(&self, other: &StackSid) -> bool {
+        self.eq(other.as_sid())
     }
 }
