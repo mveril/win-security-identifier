@@ -2,7 +2,7 @@
 use crate::SecurityIdentifier;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::{from_raw_parts, from_raw_parts_mut};
-use crate::{Sid, SidIdentifierAuthority, internal::SidLenValid};
+use crate::{Sid, SidIdentifierAuthority, StackSid, as_sid::AsSid, internal::SidLenValid};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::borrow::ToOwned;
 #[cfg(has_ptr_metadata)]
@@ -224,6 +224,24 @@ where
 {
     fn eq(&self, other: &ConstSid<N>) -> bool {
         self.eq(other.as_sid())
+    }
+}
+
+impl<const N: usize> PartialEq<ConstSid<N>> for StackSid
+where
+    [u32; N]: SidLenValid,
+{
+    fn eq(&self, other: &Sid) -> bool {
+        self.as_sid().eq(other)
+    }
+}
+
+impl<const N: usize> PartialEq<StackSid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    fn eq(&self, other: &StackSid) -> bool {
+        self.as_sid().eq(other)
     }
 }
 

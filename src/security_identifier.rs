@@ -257,9 +257,9 @@ impl SecurityIdentifier {
         let bytes = bytes.as_ref();
         bytes.try_into()
     }
-    /// Returns a reference to this `ConstSid` as a dynamically-sized [`Sid`].
+    /// Returns a reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
     ///
-    /// This allows treating the fixed-size `ConstSid` as a regular `Sid`
+    /// This allows treating owned `SecurityIdentifier` as a regular `Sid`
     /// with a trailing slice of sub-authorities.
     ///
     /// # Examples
@@ -275,6 +275,38 @@ impl SecurityIdentifier {
     /// ```
     pub const fn as_sid(&self) -> &Sid {
         unsafe { self.sid.as_ref() }
+    }
+
+    /// Returns a mut reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
+    ///
+    /// This allows treating owned `SecurityIdentifier` as a regular `Sid`
+    /// with a trailing slice of sub-authorities.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{SecurityIdentifier, Sid, SidIdentifierAuthority};
+    /// #
+    /// // Create a mutable ConstSid with three sub-authorities:
+    /// // S-1-5-21-1000 (revision 1, authority 5, sub-authorities [21, 1000])
+    /// let mut owned = SecurityIdentifier::try_new(
+    ///     1,
+    ///     SidIdentifierAuthority::NT_AUTHORITY,
+    ///     &[21u32, 100u32, 0u32],
+    /// ).unwrap();
+    ///
+    /// // Get a mutable `&mut Sid` referencing the same memory.
+    /// // From here we can mutate sub-authorities in-place without re-allocating.
+    /// let sid_mut: &mut Sid = owned.as_sid_mut();
+    ///
+    /// // Modify the last sub-authority in-place.
+    /// // (Assumes the `Sid` type exposes a mutable slice accessor.)
+    /// sid_mut.identifier_authority = SidIdentifierAuthority::NULL_AUTHORITY;
+    ///
+    /// // The string representation reflects the in-place change.
+    /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
+    /// ```
+    pub const fn as_sid_mut(&mut self) -> &mut Sid {
+        unsafe { self.sid.as_mut() }
     }
 }
 
