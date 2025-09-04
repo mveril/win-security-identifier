@@ -14,8 +14,8 @@ mod windows;
 
 use crate::InvalidSidFormat;
 
-pub(crate) const MIN_SUBAUTHORITY_COUNT: u8 = 1;
-pub(crate) const MAX_SUBAUTHORITY_COUNT: u8 = 15;
+pub(crate) use parsing::MAX_SUBAUTHORITY_COUNT;
+pub(crate) use parsing::MIN_SUBAUTHORITY_COUNT;
 
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts;
