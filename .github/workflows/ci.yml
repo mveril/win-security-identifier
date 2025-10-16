@@ -1,0 +1,126 @@
+name: ci
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - release/*
+  pull_request:
+    branches:
+      - main
+      - develop
+      - release/*
+  schedule:
+    - cron: '0 0 * * 0'
+
+jobs:
+  build-and-validate:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - toolchain: stable
+            RUSTDOCFLAGS: "-D warnings"
+            DOCTYPE: "docrs"
+          - toolchain: nightly
+            RUSTDOCFLAGS: "-D warnings --cfg docsrs"
+            DOCTYPE: "doc"
+
+    name: "Build and validate (${{ matrix.toolchain}})"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: ${{ matrix.RUSTDOCFLAGS }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Cache Cargo Registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Cargo Git Index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-index-
+
+      - name: Install Rust (Matrix)
+        shell: pwsh
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+
+      - name: Lint with Clippy (Stable Only)
+        if: matrix.toolchain == 'stable'
+        run: cargo clippy --all-targets --all-features --workspace
+
+      - name: Check Code Formatting (Stable Only)
+        if: matrix.toolchain == 'stable'
+        run: cargo fmt -- --check
+
+      - name: Build the Project
+        run: cargo build --workspace --all-features --verbose
+
+      - name: Run Tests
+        run: cargo test --workspace --all-features --verbose
+
+      - name: Generate Documentation (${{ matrix.DOCTYPE }}, ${{ matrix.toolchain }})
+        run: cargo doc --no-deps --all-features
+
+      - name: Install and Run Security Audit (Nightly Only)
+        if: matrix.toolchain == 'nightly'
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+  cross-compile:
+    name: "Cross Compilation for Windows targets on Linux (x86_64 only)"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - triple: "x86_64-pc-windows-gnu"
+            linker: "x86_64-w64-mingw32-gcc"
+            ar: "x86_64-w64-mingw32-gcc-ar"
+          - triple: "x86_64-pc-windows-gnullvm"
+            linker: "x86_64-w64-mingw32-gcc"
+            ar: "x86_64-w64-mingw32-gcc-ar"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain and add target
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add ${{ matrix.target.triple }}
+
+      - name: Install cross-compilation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm mingw-w64
+
+      - name: Ensure xtask compilable and runable on Linux
+        run: cargo xtask --version
+
+      - name: Set up environment for Windows cross-compilation
+        shell: bash
+        run: |
+          trple=$(echo "${{ matrix.target.triple }}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+          echo "Setting CARGO_TARGET_${var_name}_LINKER=${{ matrix.target.linker }}"
+          echo "CARGO_TARGET_${trple}_LINKER=${{ matrix.target.linker }}" >> $GITHUB_ENV
+          echo "CARGO_TARGET_${trple}_AR=${{ matrix.target.ar }}" >> $GITHUB_ENV
+
+      - name: Build Project for target ${{ matrix.target.triple }}
+        run: cargo build --target=${{ matrix.target.triple }} --all-features --release
+
+      - name: Run doc
+        run: cargo doc --target=${{ matrix.target.triple }} --no-deps --all-features
