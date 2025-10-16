@@ -195,7 +195,6 @@ impl SecurityIdentifier {
     pub fn get_current_user_sid() -> Result<Self, TokenError> {
         use core::mem::MaybeUninit;
         use core::ptr;
-        use smallvec::SmallVec;
         use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
         use windows_sys::Win32::{
             Foundation::GetLastError,
@@ -242,7 +241,8 @@ impl SecurityIdentifier {
             return Err(TokenError::GetTokenSizeFailed);
         }
 
-        let mut buffer: SmallVec<[u8; 128]> = SmallVec::with_capacity(size as usize);
+        // --- Allocate buffer with reported size ------------------------------------
+        let mut buffer = vec![0u8; size as usize];
 
         // SAFETY: Buffer pointer/length are consistent with allocation; size was set by the API.
         let second_ok = unsafe {
@@ -260,8 +260,6 @@ impl SecurityIdentifier {
             let err = unsafe { GetLastError() };
             return Err(TokenError::GetTokenInfoFailed(err));
         }
-        // SAFETY: The buffer was initialized by GetTokenInformation up to `size` bytes.
-        unsafe { buffer.set_len(size as usize) };
         #[expect(
             clippy::cast_ptr_alignment,
             reason = "read_unaligned handles unaligned access"
