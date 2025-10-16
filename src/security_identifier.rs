@@ -13,12 +13,12 @@ mod token_error;
 use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
 use ::core::alloc::Layout;
 use core::fmt::{self, Debug, Display};
-#[cfg(all(windows, feature = "std"))]
 use core::ops::DerefMut;
 use core::str::FromStr;
 use core::{ops::Deref, ptr::NonNull};
 #[cfg(feature = "std")]
 use std::{alloc, borrow::Borrow, borrow::ToOwned};
+#[cfg(all(windows, feature = "std"))]
 pub use token_error::TokenError;
 
 /// Owned, heap-allocated Windows **Security Identifier** (SID).
