@@ -14,15 +14,12 @@ use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
 use ::core::alloc::Layout;
 use core::fmt::{self, Debug, Display};
 #[cfg(all(windows, feature = "std"))]
-use core::mem::MaybeUninit;
 use core::ops::DerefMut;
 use core::str::FromStr;
 use core::{ops::Deref, ptr::NonNull};
 #[cfg(feature = "std")]
 use std::{alloc, borrow::Borrow, borrow::ToOwned};
 pub use token_error::TokenError;
-#[cfg(all(windows, feature = "std"))]
-use windows_sys::Win32::Security::*;
 
 /// Owned, heap-allocated Windows **Security Identifier** (SID).
 ///
@@ -52,8 +49,9 @@ pub struct SecurityIdentifier {
 }
 
 impl Debug for SecurityIdentifier {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.deref(), f)
+        Debug::fmt(&**self, f)
     }
 }
 
@@ -80,33 +78,17 @@ impl SecurityIdentifier {
     /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
+    #[inline]
     pub fn try_new<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
         revision: u8,
         identifier_authority: I,
         sub_authority: S,
     ) -> Option<Self> {
         let sub_authority = sub_authority.as_ref();
-        if sub_authority_size_guard(sub_authority.len()) {
-            let sub_authority_count = sub_authority.len() as u8;
-            let identifier_authority = identifier_authority.into();
-            unsafe {
-                // SAFETY: allocation size is computed from `SidSizeInfo` using
-                // a validated sub-authority count.
-                let mut instance =
-                    Self::uninit(SidSizeInfo::from_count(sub_authority_count).unwrap());
-                instance.sid.as_mut().revision = revision;
-                instance.sid.as_mut().sub_authority_count = sub_authority_count;
-                instance.sid.as_mut().identifier_authority = identifier_authority;
-                instance
-                    .sid
-                    .as_mut()
-                    .sub_authority
-                    .copy_from_slice(sub_authority);
-                Some(instance)
-            }
-        } else {
-            None
-        }
+        // SAFETY: sub_authority_count is correctly validated by guard.
+        sub_authority_size_guard(sub_authority.len()).then_some(unsafe {
+            Self::new_unchecked(revision, identifier_authority, sub_authority)
+        })
     }
 
     /// Creates a new `SecurityIdentifier` from parts **without validation**.
@@ -131,12 +113,31 @@ impl SecurityIdentifier {
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
     /// ```
+    #[must_use]
+    #[inline]
     pub unsafe fn new_unchecked<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
         revision: u8,
         identifier_authority: I,
         sub_authority: S,
     ) -> Self {
-        Self::try_new(revision, identifier_authority, sub_authority).unwrap()
+        let sub_authority = sub_authority.as_ref();
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "Precondition of sub_authority_is_checked in the doc."
+        )]
+        let sub_authority_count = sub_authority.len() as u8;
+        let identifier_authority = identifier_authority.into();
+        // SAFETY: sub_authority_count is validated by guard.
+        let size_info = unsafe { SidSizeInfo::from_count(sub_authority_count).unwrap_unchecked() };
+        // Safety: The uninit SID will be correctly filled after.
+        let mut instance = unsafe { Self::uninit(size_info) };
+        // Safety: sid is valid here to be fill.
+        let sid_ref = unsafe { instance.sid.as_mut() };
+        sid_ref.revision = revision;
+        sid_ref.sub_authority_count = sub_authority_count;
+        sid_ref.identifier_authority = identifier_authority;
+        sid_ref.sub_authority.copy_from_slice(sub_authority);
+        instance
     }
 
     /// Allocates uninitialized storage for a `Sid` using `size_info`.
@@ -149,21 +150,22 @@ impl SecurityIdentifier {
     /// - `size_info` must be consistent with the number of sub-authorities written later.
     unsafe fn uninit(size_info: SidSizeInfo) -> Self {
         let layout = size_info.get_layout();
-
+        // SAFETY: layout is valid and non-zero sized.
         let mem_ptr = unsafe { alloc::alloc(layout) };
         if mem_ptr.is_null() {
             alloc::handle_alloc_error(layout);
         }
+        let sub_authority_count = size_info.get_sub_authority_count();
         // SAFETY: `from_raw_parts_mut` builds a fat pointer to `Sid` with the
         // correct metadata (`sub_authority_count` elements in the trailing slice).
-        let sub_authority_count = size_info.get_sub_authority_count();
         let mut ptr: NonNull<Sid> = unsafe {
             NonNull::new_unchecked(from_raw_parts_mut(
-                mem_ptr as *mut (),
+                mem_ptr.cast::<()>(),
                 sub_authority_count as usize,
             ))
         };
         // Initialize mandatory header field needed by later methods.
+        // SAFETY: `ptr` was initialized just above.
         unsafe {
             ptr.as_mut().sub_authority_count = sub_authority_count;
         }
@@ -186,45 +188,90 @@ impl SecurityIdentifier {
     /// # }
     /// ```
     #[cfg(all(windows, feature = "std"))]
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "Cannot be inlined because it's a big method"
+    )]
     pub fn get_current_user_sid() -> Result<Self, TokenError> {
-        use std::os::windows::io::RawHandle;
+        use core::mem::MaybeUninit;
+        use core::ptr;
+        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
         use windows_sys::Win32::{
             Foundation::GetLastError,
+            Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser},
             System::Threading::{GetCurrentProcess, OpenProcessToken},
         };
-        unsafe {
-            use core::ptr;
 
-            let mut token_handle = MaybeUninit::<RawHandle>::uninit();
-            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, token_handle.as_mut_ptr()) == 0 {
-                return Err(TokenError::OpenTokenFailed(GetLastError()));
-            }
-            let token_handle = token_handle.assume_init();
+        // --- Open the process token ------------------------------------------------
+        let mut raw_handle_mu: MaybeUninit<RawHandle> = MaybeUninit::uninit();
 
-            let mut size = 0;
-            if GetTokenInformation(token_handle, TokenUser, ptr::null_mut() as _, 0, &mut size) != 0
-            {
-                // Normally fails to report the required size.
-                return Err(TokenError::GetTokenSizeFailed);
-            }
+        // SAFETY: GetCurrentProcess is side-effect free and can be called unconditionally.
+        let process_handle = unsafe { GetCurrentProcess() };
+        // SAFETY: FFI call; pointers are valid. We check the return value immediately.
+        let open_ok =
+            unsafe { OpenProcessToken(process_handle, TOKEN_QUERY, raw_handle_mu.as_mut_ptr()) };
 
-            let mut buffer = vec![0u8; size as usize];
-
-            if GetTokenInformation(
-                token_handle,
-                TokenUser,
-                buffer.as_mut_ptr() as _,
-                size,
-                &mut size,
-            ) == 0
-            {
-                return Err(TokenError::GetTokenInfoFailed(GetLastError()));
-            }
-
-            let token_user = &*(buffer.as_ptr() as *const TOKEN_USER);
-            let sid = Sid::from_raw(token_user.User.Sid);
-            Ok(sid.to_owned())
+        if open_ok == 0 {
+            // SAFETY: GetLastError is side-effect free and can be called unconditionally.
+            let err = unsafe { GetLastError() };
+            return Err(TokenError::OpenTokenFailed(err));
         }
+
+        // SAFETY: OpenProcessToken reported success; the handle is initialized.
+        let raw_handle: RawHandle = unsafe { raw_handle_mu.assume_init() };
+
+        // SAFETY: `raw_handle` is a valid owned handle obtained from the OS.
+        let token_handle: OwnedHandle = unsafe { OwnedHandle::from_raw_handle(raw_handle) };
+
+        // --- First GetTokenInformation to obtain required size ---------------------
+        let mut size: u32 = 0;
+        // SAFETY: Standard size-query pattern with null buffer and 0 length.
+        let first_ok = unsafe {
+            GetTokenInformation(
+                token_handle.as_raw_handle(),
+                TokenUser,
+                ptr::null_mut(),
+                0,
+                &raw mut size,
+            )
+        };
+
+        if first_ok != 0 {
+            // Unexpected success: should fail to report size.
+            return Err(TokenError::GetTokenSizeFailed);
+        }
+
+        // --- Allocate buffer with reported size ------------------------------------
+        let mut buffer = vec![0u8; size as usize];
+
+        // SAFETY: Buffer pointer/length are consistent with allocation; size was set by the API.
+        let second_ok = unsafe {
+            GetTokenInformation(
+                token_handle.as_raw_handle(),
+                TokenUser,
+                buffer.as_mut_ptr().cast(),
+                size,
+                &raw mut size,
+            )
+        };
+
+        if second_ok == 0 {
+            // SAFETY: GetLastError can be called immediately after a failing FFI call.
+            let err = unsafe { GetLastError() };
+            return Err(TokenError::GetTokenInfoFailed(err));
+        }
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "read_unaligned handles unaligned access"
+        )]
+        let token_user_ptr = buffer.as_ptr().cast::<TOKEN_USER>();
+        // SAFETY: TOKEN_USER is a plain data struct and can be read from a byte buffer.
+        let sid_ptr = unsafe { ptr::addr_of!((*token_user_ptr).User.Sid) };
+        // SAFETY: TOKEN_USER contains a PSID which is a pointer to a valid SID.
+        let raw_sid = unsafe { ptr::read_unaligned(sid_ptr) };
+        // SAFETY: get the user Sid from the raw pointer structure.
+        let sid = unsafe { Sid::from_raw(raw_sid) };
+        Ok(sid.to_owned())
     }
 
     /// Creates a `SecurityIdentifier` from a byte slice.
@@ -235,7 +282,7 @@ impl SecurityIdentifier {
     /// - `bytes`: A type that can be referenced as a byte slice (`AsRef<[u8]>`).
     ///
     /// # Errors
-    /// - [InvalidSidFormat] If the byte slice is not a valid SID format.
+    /// - [`InvalidSidFormat`] If the byte slice is not a valid SID format.
     ///
     /// # Examples
     /// ```rust
@@ -273,7 +320,10 @@ impl SecurityIdentifier {
     /// let sid: &Sid = admin.as_sid();
     /// assert_eq!(sid.to_string(), "S-1-5-32-544");
     /// ```
+    #[inline]
+    #[must_use]
     pub const fn as_sid(&self) -> &Sid {
+        // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_ref() }
     }
 
@@ -305,7 +355,9 @@ impl SecurityIdentifier {
     /// // The string representation reflects the in-place change.
     /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
     /// ```
+    #[inline]
     pub const fn as_sid_mut(&mut self) -> &mut Sid {
+        // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_mut() }
     }
 }
@@ -313,6 +365,7 @@ impl SecurityIdentifier {
 impl TryFrom<&[u8]> for SecurityIdentifier {
     type Error = InvalidSidFormat;
 
+    #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let sid: &Sid = value.try_into()?;
         Ok(sid.to_owned())
@@ -322,79 +375,103 @@ impl TryFrom<&[u8]> for SecurityIdentifier {
 impl FromStr for SecurityIdentifier {
     type Err = InvalidSidFormat;
 
+    #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let components = SidComponents::from_str(s)?;
-        Ok(unsafe {
-            Self::new_unchecked(
-                components.revision,
-                components.identifier_authority,
-                components.sub_authority.as_slice(),
-            )
-        })
+        Ok(
+            // SAFETY: sub_authority_count is known to be valid because `SidComponents::from_str` validated it.
+            unsafe {
+                Self::new_unchecked(
+                    components.revision,
+                    components.identifier_authority,
+                    components.sub_authority.as_slice(),
+                )
+            },
+        )
     }
 }
 
 impl ToOwned for Sid {
     type Owned = super::SecurityIdentifier;
-
+    #[inline]
     fn to_owned(&self) -> Self::Owned {
+        let binary = self.as_binary();
+        // Safety: sub_authority_count is known to be valid because `self` is valid.
+        let size_info =
+            unsafe { SidSizeInfo::from_count(self.sub_authority_count).unwrap_unchecked() };
+        // Safety: The uninit SID is properly initialized by copying from `self` after.
+        let mut instance = unsafe { Self::Owned::uninit(size_info) };
+        // Safety: We copy all the bytes from a valid SID of the same size.
         unsafe {
-            let binary = self.as_binary();
-            let mut instance =
-                Self::Owned::uninit(SidSizeInfo::from_full_size(binary.len()).unwrap_unchecked());
             instance.as_binary_mut().copy_from_slice(binary);
-            instance
         }
+        instance
     }
 }
 
 impl Borrow<Sid> for SecurityIdentifier {
+    #[inline]
     fn borrow(&self) -> &Sid {
+        // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_ref() }
     }
 }
 
 impl Deref for SecurityIdentifier {
     type Target = Sid;
-
+    #[inline]
     fn deref(&self) -> &Self::Target {
+        // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_ref() }
     }
 }
 
 impl DerefMut for SecurityIdentifier {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_mut() }
     }
 }
 
 impl AsRef<Sid> for SecurityIdentifier {
+    #[inline]
     fn as_ref(&self) -> &Sid {
+        // Safety: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_ref() }
     }
 }
 
 impl AsMut<Sid> for SecurityIdentifier {
+    #[inline]
     fn as_mut(&mut self) -> &mut Sid {
+        // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_mut() }
     }
 }
 
 impl Drop for SecurityIdentifier {
+    #[inline]
     fn drop(&mut self) {
-        unsafe { alloc::dealloc(self.sid.as_ptr() as *mut u8, self.layout) };
+        // Safety: The layout is valid and the pointer is properly aligned.
+        unsafe { alloc::dealloc(self.sid.as_ptr().cast::<u8>(), self.layout) };
     }
 }
 
 impl Clone for SecurityIdentifier {
+    #[inline]
     fn clone(&self) -> Self {
-        let mut sid =
-            unsafe { Self::uninit(SidSizeInfo::from_count(self.sub_authority_count).unwrap()) };
+        // Safety: both `self` and the returned instance are valid SIDs with the same layout.
+        let size_info =
+            unsafe { SidSizeInfo::from_count(self.sub_authority_count).unwrap_unchecked() };
+        // Safety: The uninit SID is properly initialized by `clone_from`.
+        let mut sid = unsafe { Self::uninit(size_info) };
         sid.clone_from(self);
         sid
     }
-
+    #[inline]
     fn clone_from(&mut self, source: &Self) {
+        // Safety: both `self` and `source` are valid SIDs with the same layout.
         unsafe {
             self.as_binary_mut().copy_from_slice(source.as_binary());
         }
@@ -402,6 +479,7 @@ impl Clone for SecurityIdentifier {
 }
 
 impl Display for SecurityIdentifier {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sid: &Sid = self.as_ref();
         Display::fmt(sid, f)
@@ -411,18 +489,21 @@ impl Display for SecurityIdentifier {
 impl Eq for SecurityIdentifier {}
 
 impl PartialEq<Sid> for SecurityIdentifier {
+    #[inline]
     fn eq(&self, other: &Sid) -> bool {
         AsRef::<Sid>::as_ref(self) == other
     }
 }
 
 impl PartialEq<SecurityIdentifier> for Sid {
+    #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
         self == other.as_ref()
     }
 }
 
 impl PartialEq for SecurityIdentifier {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         AsRef::<Sid>::as_ref(self) == other.as_ref()
     }

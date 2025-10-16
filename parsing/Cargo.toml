@@ -1,9 +1,16 @@
 [package]
 name = "win-security-identifier-parsing"
-version = "0.1.0"
-edition = "2024"
-
+description = "Core parsing processing for the win-security-identifier project do not use it directly use win-security-identifier instead"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+keywords = ["windows", "sid", "security-identifier", "acl", "sddl"]
+categories = ["os::windows-apis", "parser-implementations", "data-structures"]
 
 [dependencies]
 arrayvec = { workspace = true }
 thiserror = { workspace = true }
+
+[lints]
+workspace = true

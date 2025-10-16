@@ -1,7 +1,12 @@
 [package]
 name = "win-security-identifier-macro"
-version = "0.1.0"
-edition = "2024"
+keywords = ["windows", "macro", "sid", "security-identifier", "acl", "sddl"]
+description = "Proc macro for the win-security-identifier project"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+categories = ["os::windows-apis", "parser-implementations", "data-structures"]
 
 [lib]
 proc-macro = true
@@ -12,3 +17,6 @@ quote = "1"
 proc-macro2 = "1"
 parsing = { workspace = true }
 proc-macro-crate = "3"
+
+[lints]
+workspace = true

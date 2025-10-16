@@ -1,6 +1,6 @@
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-/// Represents the identifier authority in a Security Identifier ([crate::Sid]).
+/// Represents the identifier authority in a Security Identifier ([`crate::Sid`]).
 pub struct SidIdentifierAuthority {
     /// The raw bytes of the identifier authority.
     pub value: [u8; 6],
@@ -13,7 +13,6 @@ impl SidIdentifierAuthority {
     pub const NULL_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 0]);
 
     /// World Authority (S-1-1)
-    ///
     /// Used to represent the "Everyone" group.
     pub const SECURITY_WORLD_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 1]);
 
@@ -44,29 +43,29 @@ impl SidIdentifierAuthority {
     pub const SECURITY_RESOURCE_MANAGER_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 9]);
 
     /// Creates a new `SidIdentifierAuthority` from the raw bytes.
+    #[inline]
+    #[must_use]
     pub const fn new(value: [u8; 6]) -> Self {
         Self { value }
-    }
-
-    /// Returns the world authority identifier
-    pub const fn world() -> Self {
-        Self::new([0, 0, 0, 0, 0, 1])
     }
 }
 
 impl Default for SidIdentifierAuthority {
+    #[inline]
     fn default() -> Self {
         Self::NULL_AUTHORITY
     }
 }
 
 impl From<[u8; 6]> for SidIdentifierAuthority {
+    #[inline]
     fn from(value: [u8; 6]) -> Self {
         Self { value }
     }
 }
 
 impl From<SidIdentifierAuthority> for [u8; 6] {
+    #[inline]
     fn from(value: SidIdentifierAuthority) -> Self {
         value.value
     }

@@ -24,6 +24,7 @@ pub struct SidComponents {
 pub struct InvalidSidFormat;
 
 impl Display for InvalidSidFormat {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Invalid format for Sid")
     }
@@ -31,13 +32,12 @@ impl Display for InvalidSidFormat {
 
 impl FromStr for SidComponents {
     type Err = InvalidSidFormat;
-
+    #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut s_cmp = s.split("-");
+        let mut s_cmp = s.split('-');
         if !s_cmp
             .next()
-            .map(|head| head.eq_ignore_ascii_case("s"))
-            .unwrap_or(false)
+            .is_some_and(|head| head.eq_ignore_ascii_case("s"))
         {
             return Err(InvalidSidFormat);
         }
@@ -53,8 +53,8 @@ impl FromStr for SidComponents {
             .and_then(|s| s.parse::<u64>().map_err(|_| InvalidSidFormat))
             .map(|value| {
                 let bytes = value.to_be_bytes();
-                let array: [u8; 6] = bytes[2..].try_into().unwrap();
-                array
+                #[expect(clippy::unwrap_used)]
+                bytes[2..].try_into().unwrap()
             })?;
         let mut sub_authority = ArrayVec::<u32, MAX_SUBAUTHORITY_COUNT_USIZE>::new();
         for item in s_cmp {

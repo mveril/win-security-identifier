@@ -11,6 +11,9 @@ pub struct SidLookupResult {
 
 impl SidLookupResult {
     /// Get the SID type as an enum.
+    /// # Errors
+    /// Return a [`TryFromPrimitiveError<SidType`] error if the raw SID type value is unknown.
+    #[inline]
     pub fn sid_type(&self) -> Result<SidType, num_enum::TryFromPrimitiveError<SidType>> {
         SidType::try_from_primitive(self.sid_type_raw)
     }

@@ -1,9 +1,8 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-
 /// Values specify the type of a Security Identifier (SID) returned by APIs
-/// like `LookupAccountSidW``.
+/// like [LookupAccountSidW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-lookupaccountsidw).
 /// # see also
-/// See Microsoft docs for [SID_NAME_USE](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-sid_name_use).
+/// Microsoft docs for [SID_NAME_USE](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-sid_name_use).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[repr(i32)]
 pub enum SidType {
@@ -18,7 +17,7 @@ pub enum SidType {
     /// A SID for an alias (local group).
     Alias = 4,
 
-    /// A well-known group SID (e.g., Everyone, LocalSystem).
+    /// A well-known group SID (e.g., Everyone, cleLocalSystem).
     WellKnownGroup = 5,
 
     /// A SID for an account that has been deleted.

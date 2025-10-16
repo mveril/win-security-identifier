@@ -23,8 +23,8 @@ pub enum Component {
 impl Display for Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Component::Domain => f.write_str("domain"),
-            Component::Name => f.write_str("name"),
+            Self::Domain => f.write_str("domain"),
+            Self::Name => f.write_str("name"),
         }
     }
 }
@@ -194,10 +194,10 @@ fn platform_forbidden_check(
         use std::os::windows::ffi::OsStrExt;
         for (idx, unit) in s.encode_wide().enumerate() {
             // NUL always forbidden (0), plus any ASCII units in policy
-            if unit == 0 || policy.forbidden_ascii.iter().any(|&b| unit == b as u16) {
+            if unit == 0 || policy.forbidden_ascii.iter().any(|&b| unit == u16::from(b)) {
                 return Err(DomainParsingError::ForbiddenUnit {
                     which,
-                    unit: unit as u32,
+                    unit: u32::from(unit),
                     index: idx,
                 });
             }
@@ -230,6 +230,7 @@ pub struct DomainAndName {
 }
 
 impl DomainAndName {
+    #[inline]
     /// Non-validating constructor (domain, then name).
     pub fn new<D: Into<OsString>, N: Into<OsString>>(domain: D, name: N) -> Self {
         Self {
@@ -239,6 +240,9 @@ impl DomainAndName {
     }
 
     /// Validating constructor from owned parts.
+    /// # Errors
+    /// See [`DomainParsingError`] and [`ParsePolicy`].
+    #[inline]
     pub fn try_new_with_policy<D: Into<OsString>, N: Into<OsString>>(
         policy: &ParsePolicy,
         domain: D,
@@ -254,6 +258,9 @@ impl DomainAndName {
     }
 
     /// Parse `"DOMAIN\Name"` with a specific policy (runtime).
+    /// # Errors
+    /// See [`DomainParsingError`] and [`ParsePolicy`].
+    #[inline]
     pub fn parse_with_policy(policy: &ParsePolicy, s: &str) -> Result<Self, DomainParsingError> {
         // Split into at most 3 parts to detect "too many separators"
         let mut iter = s.splitn(3, '\\');
@@ -268,6 +275,7 @@ impl DomainAndName {
 }
 
 impl Display for DomainAndName {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -282,6 +290,7 @@ impl FromStr for DomainAndName {
     type Err = DomainParsingError;
 
     /// Parses with `ParsePolicy::DEFAULT`.
+    #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse_with_policy(&ParsePolicy::DEFAULT, s)
     }

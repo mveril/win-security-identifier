@@ -3,10 +3,11 @@ use std::ffi::OsStr;
 use widestring::WideCString;
 use windows_sys::Win32::Security::PSID;
 
+#[cfg(windows)]
+use crate::sid_lookup::Error;
 use crate::{SidLookupResult, SidType, sid_lookup::SidLookupOperation};
 
 use super::Sid;
-
 
 impl Sid {
     /// Creates a reference to a `Sid` from a raw `PSID` pointer.
@@ -14,18 +15,18 @@ impl Sid {
     /// # Safety
     /// The `raw` pointer must point to a valid SID memory block with a correct layout
     /// and live at least as long as the returned reference.
+    #[inline]
     pub const unsafe fn from_raw<'a>(raw: PSID) -> &'a Self {
+        // Safety: Same precondition as the public API.
         unsafe { Self::from_raw_internal(raw as *const ()) }
     }
 
     /// Returns the underlying raw `PSID` pointer.
-    ///
-    /// # Safety
-    /// Returned pointer is only valid for the lifetime of `&self`.
     #[inline]
-    pub const unsafe fn as_raw(&self) -> PSID {
+    #[must_use]
+    pub const fn as_raw(&self) -> PSID {
         // Direct cast is fine; avoids building a temporary slice.
-        self as *const Self as PSID
+        core::ptr::from_ref(self) as PSID
     }
 
     // -------- Internals -----------------------------------------------------
@@ -48,9 +49,9 @@ impl Sid {
     /// Internal: full lookup on a given machine.
     #[cfg(windows)]
     #[inline]
-    fn lookup_impl(&self, machine: Option<&WideCString>) -> Option<SidLookupResult> {
+    fn lookup_impl(&self, machine: Option<&WideCString>) -> Option<Result<SidLookupResult, Error>> {
         // Build once, then process. Keeps the public API tiny.
-        SidLookupOperation::new(self, machine).map(|op| op.process())
+        SidLookupOperation::new(self, machine).map(SidLookupOperation::process)
     }
 
     // -------- Public API ----------------------------------------------------
@@ -68,16 +69,14 @@ impl Sid {
     #[inline]
     #[must_use]
     pub fn is_known_remote_sid<S: AsRef<OsStr>>(&self, machine_name: S) -> bool {
-        match Self::osstr_to_wide(machine_name.as_ref()) {
-            Some(wide) => self.is_known_impl(Some(&wide)),
-            None => false,
-        }
+        Self::osstr_to_wide(machine_name.as_ref())
+            .is_some_and(|wide: widestring::U16CString| self.is_known_impl(Some(&wide)))
     }
 
     /// Performs a lookup of this SID on the local machine.
     #[inline]
     #[must_use]
-    pub fn lookup_local_sid(&self) -> Option<SidLookupResult> {
+    pub fn lookup_local_sid(&self) -> Option<Result<SidLookupResult, Error>> {
         self.lookup_impl(None)
     }
 
@@ -86,7 +85,10 @@ impl Sid {
     /// Accepts any `AsRef<OsStr>` to be ergonomic for callers.
     #[inline]
     #[must_use]
-    pub fn lookup_remote_sid<S: AsRef<OsStr>>(&self, machine_name: S) -> Option<SidLookupResult> {
+    pub fn lookup_remote_sid<S: AsRef<OsStr>>(
+        &self,
+        machine_name: S,
+    ) -> Option<Result<SidLookupResult, Error>> {
         Self::osstr_to_wide(machine_name.as_ref()).and_then(|w| self.lookup_impl(Some(&w)))
     }
 
@@ -110,11 +112,8 @@ impl Sid {
         &self,
         machine_name: S,
     ) -> Option<Result<SidType, num_enum::TryFromPrimitiveError<SidType>>> {
-        match Self::osstr_to_wide(machine_name.as_ref()) {
-            Some(w) => {
-                SidLookupOperation::new(self, Some(&w)).map(|op| SidType::try_from(op.sid_type_raw))
-            }
-            None => None,
-        }
+        Self::osstr_to_wide(machine_name.as_ref()).and_then(|w| {
+            SidLookupOperation::new(self, Some(&w)).map(|op| SidType::try_from(op.sid_type_raw))
+        })
     }
 }

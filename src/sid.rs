@@ -14,8 +14,8 @@ mod windows;
 
 use crate::InvalidSidFormat;
 
-pub(crate) use parsing::MAX_SUBAUTHORITY_COUNT;
-pub(crate) use parsing::MIN_SUBAUTHORITY_COUNT;
+pub use parsing::MAX_SUBAUTHORITY_COUNT;
+pub use parsing::MIN_SUBAUTHORITY_COUNT;
 
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts;
@@ -67,28 +67,19 @@ pub struct Sid {
 /// Useful when computing minimal layouts and when manipulating metadata
 /// independently of the dynamic tail.
 #[repr(C)]
-pub(crate) struct SidHead {
+pub struct SidHead {
     pub revision: u8,
     pub sub_authority_count: u8,
     pub identifier_authority: SidIdentifierAuthority,
 }
 
-/// Size (in bytes) of the fixed `SidHead` header.
-pub(crate) const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
-/// Alignment (in bytes) of the fixed `SidHead` header.
-#[allow(dead_code)]
-pub(crate) const SID_HEAD_ALIGN: usize = core::mem::align_of::<SidHead>();
+pub const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 
 impl Sid {
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
     ///
     /// The slice covers the header and the exact number of sub-authorities currently set
     /// (based on `sub_authority_count`).
-    ///
-    /// # Safety
-    /// - The instance must be fully initialized and backed by a valid allocation large enough
-    ///   for the computed layout (see `get_current_min_layoot`).
-    /// - The lifetime of the returned slice is tied to `&self`.
     ///
     /// # Examples
     /// ```rust
@@ -100,23 +91,34 @@ impl Sid {
     ///     assert_eq!(bytes, [1, 2, 0, 0, 0, 0, 0, 5, 32, 0, 0, 0, 32, 2, 0, 0]);
     /// }
     /// ```
+    #[inline]
+    #[must_use]
     pub const fn as_binary(&self) -> &[u8] {
+        // Safety:
+        // - The instance must be fully initialized and backed by a valid allocation large enough
+        //   for the computed layout (see `get_current_min_layoot`).
+        // - The lifetime of the returned slice is tied to `&self`.
         unsafe {
             slice::from_raw_parts(
-                self as *const Self as *const u8,
+                core::ptr::from_ref(self).cast::<u8>(),
                 self.get_current_min_layout().size(),
             )
         }
     }
 
     const unsafe fn from_raw_internal<'a>(raw: *const ()) -> &'a Self {
+        // Safety: precondition defined in the method doc.
+        #[expect(
+            clippy::multiple_unsafe_ops_per_block,
+            reason = "single unsafe block for clarity"
+        )]
         unsafe {
             // Read sub_authority_count by forging a fat pointer with metadata=0 first.
             let metadata = {
-                let ptr: *const Sid = from_raw_parts(raw, 0);
+                let ptr: *const Self = from_raw_parts(raw, 0);
                 (*ptr).sub_authority_count
             };
-            &*from_raw_parts(raw as *mut () as *const (), metadata as usize)
+            &*from_raw_parts(raw.cast::<()>(), metadata as usize)
         }
     }
 
@@ -128,11 +130,11 @@ impl Sid {
     /// - Same preconditions as `as_binary`.
     /// - Mutating the buffer must preserve SID invariants (e.g., do not desynchronize
     ///   `sub_authority_count` and the tail length).
-    #[cfg(feature = "alloc")]
-    pub(crate) unsafe fn as_binary_mut(&mut self) -> &mut [u8] {
+    pub(crate) const unsafe fn as_binary_mut(&mut self) -> &mut [u8] {
+        // Safety: Precondition definied in the method doc.
         unsafe {
             slice::from_raw_parts_mut(
-                self as *const Self as *mut u8,
+                core::ptr::from_ref(self).cast_mut().cast::<u8>(),
                 self.get_current_min_layout().size(),
             )
         }
@@ -152,7 +154,10 @@ impl Sid {
     /// let subs = sid.get_sub_authorities();
     /// assert_eq!(subs, &[1]);
     /// ```
+    #[must_use]
+    #[inline]
     pub const fn get_sub_authorities(&self) -> &[u32] {
+        // Safety: self is valid and fully initialized.
         unsafe {
             slice::from_raw_parts(
                 self.sub_authority.as_ptr(),
@@ -174,7 +179,9 @@ impl Sid {
     /// let subs = sid.get_sub_authorities();
     /// assert_eq!(subs, &[1]);
     /// ```
+    #[inline]
     pub const fn get_sub_authorities_mut(&mut self) -> &mut [u32] {
+        // Safety: self is valid and fully initialized.
         unsafe {
             slice::from_raw_parts_mut(
                 self.sub_authority.as_mut_ptr(),
@@ -190,10 +197,13 @@ impl Sid {
     /// - validate backing allocations,
     /// - compute binary slice lengths,
     /// - interoperate with low-level allocators.
+    #[must_use]
+    #[inline]
     pub const fn get_current_min_layout(&self) -> Layout {
-        match SidSizeInfo::from_count(self.sub_authority_count) {
-            Some(info) => info.get_layout(),
-            None => unreachable!(),
+        if let Some(info) = SidSizeInfo::from_count(self.sub_authority_count) {
+            info.get_layout()
+        } else {
+            unreachable!()
         }
     }
 }
@@ -201,6 +211,7 @@ impl Sid {
 // --- Standard trait impls intentionally left undocumented (per your request) ---
 
 impl Display for Sid {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Write the revision (should always be 1 in modern SIDs)
         write!(f, "S-{}", self.revision)?;
@@ -209,7 +220,7 @@ impl Display for Sid {
         let mut be_bytes = [0u8; 8];
         be_bytes[2..].copy_from_slice(self.identifier_authority.value.as_slice());
         let id_auth_value = u64::from_be_bytes(be_bytes);
-        if id_auth_value <= 0xFFFFFFFF {
+        if id_auth_value <= 0xFFFF_FFFF {
             write!(f, "-{id_auth_value}")?;
         } else {
             write!(f, "-0x{id_auth_value:X}")?;
@@ -224,6 +235,7 @@ impl Display for Sid {
 }
 
 impl PartialEq for Sid {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.as_binary() == other.as_binary()
     }
@@ -231,6 +243,7 @@ impl PartialEq for Sid {
 
 impl Eq for Sid {}
 impl Hash for Sid {
+    #[inline]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
@@ -242,30 +255,37 @@ impl Hash for Sid {
 impl TryFrom<&[u8]> for &Sid {
     type Error = InvalidSidFormat;
 
+    #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let min_size = match SidSizeInfo::from_count(1) {
-            Some(info) => info.get_layout().size(),
-            None => unreachable!(),
-        };
+        let min_size = SidSizeInfo::MIN.get_layout().size();
         if value.len() < min_size {
             return Err(InvalidSidFormat);
         }
 
         let count_offset = offset_of!(Sid, sub_authority_count);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "We know the count_offset is in the bound (was checked by minimum size)"
+        )]
         let count = value[count_offset];
 
         if !sub_authority_size_guard(count as usize) {
             return Err(InvalidSidFormat);
         }
 
-        let size = match SidSizeInfo::from_count(count) {
-            Some(info) => info.get_layout().size(),
-            None => unreachable!(),
-        };
+        let size = SidSizeInfo::from_count(count).map_or_else(
+            || {
+                unreachable!();
+            },
+            |info| info.get_layout().size(),
+        );
         if value.len() != size {
             return Err(InvalidSidFormat);
         }
-        Ok(unsafe { Sid::from_raw_internal(value.as_ptr() as *const ()) })
+        Ok(
+            // Safety: value length has been validated against the expected layout size.
+            unsafe { Sid::from_raw_internal(value.as_ptr().cast()) },
+        )
     }
 }
 #[cfg(test)]

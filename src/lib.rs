@@ -101,8 +101,6 @@
 //! ## No-std?
 //! Not supported. The crate relies on allocation and Windows FFI (on Windows).
 
-#![warn(missing_docs)]
-#![warn(rustdoc::missing_doc_code_examples)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg))]
 #![cfg_attr(needs_ptr_metadata_feature, feature(ptr_metadata))]

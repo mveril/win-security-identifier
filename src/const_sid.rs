@@ -19,8 +19,8 @@ use std::borrow::ToOwned;
 ///
 /// `ConstSid<N>` stores the SID header plus exactly `N` sub-authorities as a
 /// fixed-size array, making it usable in `const` contexts and suitable for
-/// static embeddings. It can be viewed as a dynamically-sized [Sid] via
-/// `AsRef<Sid>` or as_sid(), converted to an owning [SecurityIdentifier], or created from
+/// static embeddings. It can be viewed as a dynamically-sized [`Sid`] via
+/// `AsRef<Sid>` or `as_sid()`, converted to an owning [`SecurityIdentifier`], or created from
 /// an existing [Sid] when the sub-authority count matches `N`.
 ///
 /// # Invariants
@@ -59,7 +59,7 @@ impl<const N: usize> AsRef<Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &Sid {
         self.as_sid()
     }
@@ -79,6 +79,7 @@ where
     /// let s = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
     /// assert_eq!(s.to_string(), "S-1-5-32-544")
     #[must_use]
+    #[inline]
     pub const fn new(
         revision: u8,
         identifier_authority: SidIdentifierAuthority,
@@ -86,6 +87,10 @@ where
     ) -> Self {
         Self {
             revision,
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "N is guaranteed to be lower than 256 because it is lower than 16"
+            )]
             sub_authority_count: N as u8,
             sub_authority,
             identifier_authority,
@@ -103,11 +108,13 @@ where
     /// let sid: &Sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
     /// assert_eq!(sid.to_string(), "S-1-5-32-544");
     /// ```
+    #[inline]
+    #[must_use]
     pub const fn as_sid(&self) -> &Sid {
         // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
         // matches `sub_authority.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
-        unsafe { &*from_raw_parts(self as *const Self as *mut Self as *mut (), N) }
+        unsafe { &*from_raw_parts(std::ptr::from_ref(self).cast::<()>(), N) }
     }
 
     /// Returns a mut reference to this `ConstSid` as a dynamically-sized [`Sid`].
@@ -138,11 +145,12 @@ where
     /// // The string representation reflects the in-place change.
     /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
     /// ```
-    pub const fn as_sid_mut(&self) -> &mut Sid {
-        // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
+    #[inline]
+    pub const fn as_sid_mut(&mut self) -> &mut Sid {
+        // Safety: We construct a fat pointer to `Sid` with metadata `N` that
         // matches `sub_authority.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
-        unsafe { &mut *from_raw_parts_mut(self as *const Self as *mut Self as *mut (), N) }
+        unsafe { &mut *from_raw_parts_mut(std::ptr::from_mut(self).cast::<()>(), N) }
     }
 
     /// Returns the raw binary representation of this `ConstSid` as a byte slice.
@@ -167,14 +175,16 @@ where
     /// assert_eq!(&bytes[8..12], &[32, 0, 0, 0]);
     /// assert_eq!(&bytes[12..16], &[32, 2, 0, 0]);
     /// ```
+    #[inline]
+    #[must_use]
     pub const fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            let binary_ptr = self as *const Self as *const u8;
-            core::slice::from_raw_parts(binary_ptr, size_of::<Self>())
-        }
+        let binary_ptr = std::ptr::from_ref(self).cast::<u8>();
+        // Safety: The layout of `ConstSid` is known and stable, and we are
+        // creating a slice from a pointer to the start of the structure.
+        unsafe { core::slice::from_raw_parts(binary_ptr, size_of::<Self>()) }
     }
 
-    /// Returns the last sub-authority value (Relative Identifier, or RID) of this [ConstSid].
+    /// Returns the last sub-authority value (Relative Identifier, or RID) of this [`ConstSid`].
     ///
     /// The RID is commonly used to identify a specific user, group, or entity within a domain,
     /// and is the last element in the sub-authority array.
@@ -185,8 +195,14 @@ where
     /// let sid = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
     /// assert_eq!(sid.rid(), 544);
     /// ```
+    #[inline]
+    #[must_use]
     pub const fn rid(&self) -> u32 {
-        self.sub_authority[self.sub_authority_count as usize - 1]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "N is guaranteed to be greater than 0"
+        )]
+        self.sub_authority[N - 1]
     }
 }
 
@@ -194,6 +210,7 @@ impl<const N: usize> PartialEq<Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn eq(&self, other: &Sid) -> bool {
         self.as_sid().eq(other)
     }
@@ -203,6 +220,7 @@ impl<const N: usize> PartialEq<ConstSid<N>> for Sid
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn eq(&self, other: &ConstSid<N>) -> bool {
         self.eq(other.as_sid())
     }
@@ -213,6 +231,7 @@ impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
         self.eq(other.as_ref())
     }
@@ -222,6 +241,7 @@ impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn eq(&self, other: &ConstSid<N>) -> bool {
         self.eq(other.as_sid())
     }
@@ -231,6 +251,7 @@ impl<const N: usize> PartialEq<ConstSid<N>> for StackSid
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn eq(&self, other: &ConstSid<N>) -> bool {
         self.as_sid().eq(other)
     }
@@ -240,6 +261,7 @@ impl<const N: usize> PartialEq<StackSid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn eq(&self, other: &StackSid) -> bool {
         self.as_sid().eq(other)
     }
@@ -250,6 +272,7 @@ impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn from(value: ConstSid<N>) -> Self {
         let sid: &Sid = value.as_ref();
         sid.to_owned()
@@ -261,7 +284,7 @@ where
     [u32; N]: SidLenValid,
 {
     type Error = TryFromSliceError;
-
+    #[inline]
     fn try_from(value: &Sid) -> Result<Self, Self::Error> {
         let revision = value.revision;
         let identifier_authority = value.identifier_authority;
@@ -276,7 +299,7 @@ where
     [u32; N]: SidLenValid,
 {
     type Error = TryFromSliceError;
-
+    #[inline]
     fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
         Self::try_from(value.as_sid())
     }
@@ -286,8 +309,9 @@ impl<const N: usize> Display for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write! {f, "{}", self.as_sid()}
+        write!(f, "{}", self.as_sid())
     }
 }
 
@@ -295,6 +319,7 @@ impl<const N: usize> Hash for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
