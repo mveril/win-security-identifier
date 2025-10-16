@@ -1,0 +1,135 @@
+name: Release Checks
+on:
+  push:
+    branches:
+      - release/*
+  pull_request:
+    branches:
+      - release/*
+
+jobs:
+  version-check:
+    runs-on: windows-latest
+    name: "Check crate versions"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-dependencies-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-dependencies-
+
+      - name: Cache PowerShell Modules
+        uses: actions/cache@v3
+        with:
+          path: C:\Users\runneradmin\Documents\PowerShell\Modules
+          key: ${{ runner.os }}-powershell-modules
+          restore-keys: ${{ runner.os }}-powershell-modules-
+
+      - name: Install Rust
+        shell: pwsh
+        run: |
+          rustup update stable
+          rustup default stable
+
+      - name: Install PSSemVer
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable -Name PSSemVer)) {
+            Install-Module -Name PSSemVer -Scope CurrentUser -Force -ErrorAction Stop
+          }
+          Import-Module -Name PSSemVer -ErrorAction Stop
+
+      - name: Extract Branch Version
+        id: extract_version
+        shell: pwsh
+        run: |
+          $branchName = "${{ github.ref_name }}"
+          $rawVersion = $branchName -replace '^release/', ''
+          Import-Module -Name PSSemVer -ErrorAction Stop
+          try {
+              $expectedVersion = [PSSemVer]::Parse($rawVersion)
+          } catch {
+              Write-Error "❌ ERROR: Failed to parse '$rawVersion' as a valid SemVer version."
+              exit 1
+          }
+          echo "EXPECTED_VERSION=$expectedVersion" >> $env:GITHUB_ENV
+
+      - name: Parse and Compare Crate Versions
+        shell: pwsh
+        run: |
+          Import-Module -Name PSSemVer -ErrorAction Stop
+          try {
+              $expectedSemVer = [PSSemVer]::Parse($env:EXPECTED_VERSION)
+          } catch {
+              Write-Error "❌ ERROR: Expected version '$env:EXPECTED_VERSION' is not a valid semantic version."
+              exit 1
+          }
+          cargo generate-lockfile
+          $pkgid = cargo pkgid -p win-security-identifier --quiet
+          if ($pkgid -match "#(.+)$") {
+              $currentVersion = $matches[1]
+          } else {
+              Write-Error "❌ ERROR: Failed to extract version from cargo pkgid output: $pkgid"
+              exit 1
+          }
+
+          try {
+              $currentSemVer = [PSSemVer]::Parse($currentVersion)
+          } catch {
+              Write-Error "❌ ERROR: Current version '$currentVersion' is not a valid semantic version."
+              exit 1
+          }
+
+          if ($currentSemVer.CompareTo($expectedSemVer) -ne 0) {
+              Write-Error "❌ ERROR: Crate version '$currentSemVer' does not match expected '$expectedSemVer'."
+              exit 1
+          }
+
+  publish-dry-run:
+    needs: version-check
+    runs-on: windows-latest
+    name: "Publish Dry-Run"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-dependencies-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-dependencies-
+
+      - name: Install Rust
+        shell: pwsh
+        run: |
+          rustup update stable
+          rustup default stable
+
+      - name: Run Tests
+        shell: pwsh
+        run: |
+          cargo test --workspace --all-targets
+
+      - name: Publish Dry-Run
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        shell: pwsh
+        run: |
+          cargo publish --workspace --dry-run
