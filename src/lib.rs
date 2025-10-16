@@ -89,7 +89,7 @@
 //! # let sid = win_security_identifier::SecurityIdentifier::from(ConstSid::<2>::new(
 //! #     1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]
 //! # ));
-//! let res = sid.lookup_local_sid().unwrap();
+//! let res = sid.lookup_local_sid().unwrap().unwrap();
 //! println!("{} => {}", sid, res.domain_name); // e.g. "MACHINE\\User"
 //! // Optionally: map raw type to enum
 //! # #[allow(unused)]
