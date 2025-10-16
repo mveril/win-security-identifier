@@ -242,8 +242,7 @@ impl SecurityIdentifier {
             return Err(TokenError::GetTokenSizeFailed);
         }
 
-        let mut buffer: SmallVec<[u8; 128]> = SmallVec::new();
-        buffer.resize(size, 0);
+        let mut buffer: SmallVec<[u8; 128]> = SmallVec::with_capacity(size as usize);
 
         // SAFETY: Buffer pointer/length are consistent with allocation; size was set by the API.
         let second_ok = unsafe {
