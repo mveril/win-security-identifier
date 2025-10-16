@@ -1,6 +1,6 @@
 //! Well-known SIDs definitions
 //!
-//! Source: https://learn.microsoft.com/windows/win32/secauthz/well-known-sids
+//! Source: <https://learn.microsoft.com/windows/win32/secauthz/well-known-sids>
 //!
 //! This module exposes all well-known SIDs as constants. Users do not need to
 //! know the number of sub-authorities (`ConstSid<N>`), each SID is directly

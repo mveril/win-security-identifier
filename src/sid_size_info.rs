@@ -3,17 +3,17 @@ use crate::utils::sub_authority_size_guard;
 use core::alloc::Layout;
 
 #[derive(PartialEq, Debug, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct SidSizeInfo {
+pub struct SidSizeInfo {
     sub_authority_count: u8,
 }
 
 impl SidSizeInfo {
-    pub const MIN: SidSizeInfo =
-        unsafe { SidSizeInfo::from_count(MIN_SUBAUTHORITY_COUNT).unwrap_unchecked() };
-    pub const MAX: SidSizeInfo =
-        unsafe { SidSizeInfo::from_count(MAX_SUBAUTHORITY_COUNT).unwrap_unchecked() };
+    // Safety: `MIN_SUBAUTHORITY_COUNT` is known to be valid.
+    pub const MIN: Self = unsafe { Self::from_count(MIN_SUBAUTHORITY_COUNT).unwrap_unchecked() };
+    // Safety: `MAX_SUBAUTHORITY_COUNT` is known to be valid.
+    pub const MAX: Self = unsafe { Self::from_count(MAX_SUBAUTHORITY_COUNT).unwrap_unchecked() };
 
-    pub const fn from_count(sub_authority_count: u8) -> Option<SidSizeInfo> {
+    pub const fn from_count(sub_authority_count: u8) -> Option<Self> {
         if sub_authority_size_guard(sub_authority_count as usize) {
             Some(Self {
                 sub_authority_count,
@@ -23,7 +23,7 @@ impl SidSizeInfo {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub const fn get_sub_authority_count(self) -> u8 {
         self.sub_authority_count
     }
@@ -33,8 +33,11 @@ impl SidSizeInfo {
     /// of a SID structure (head + sub-authorities).
     ///
     /// Returns `None` if the size is invalid.
+    #[allow(dead_code, reason = "useful method even if not used at this point")]
     pub const fn from_full_size(size: usize) -> Option<Self> {
-        if SID_HEAD_SIZE > size {
+        const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
+        const MAX_SIZE: usize = SidSizeInfo::MAX.get_layout().size();
+        if MAX_SIZE < size || size < MIN_SIZE {
             return None;
         }
 
@@ -45,23 +48,25 @@ impl SidSizeInfo {
         }
 
         // Number of sub-authorities
+        #[expect(clippy::integer_division, reason = "checked to be multiple of u32")]
         let sub_authority_count = remaining / core::mem::size_of::<u32>();
-        if sub_authority_count > u8::MAX as usize {
-            return None;
-        }
         // Delegate to guard
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "sub_authority_count is checked to be in the correct bounds"
+        )]
         Self::from_count(sub_authority_count as u8)
     }
 
     pub const fn get_layout(&self) -> Layout {
         let head: Layout = Layout::new::<SidHead>();
-        let dyn_layout = match Layout::array::<u32>(self.sub_authority_count as usize) {
-            Ok(l) => l,
-            Err(_) => unreachable!(),
+        let Ok(dyn_layout) = Layout::array::<u32>(self.sub_authority_count as usize) else {
+            unreachable!()
         };
-        match head.extend(dyn_layout) {
-            Ok((l, _)) => l.pad_to_align(),
-            Err(_) => unreachable!(),
+        if let Ok((l, _)) = head.extend(dyn_layout) {
+            l.pad_to_align()
+        } else {
+            unreachable!()
         }
     }
 }

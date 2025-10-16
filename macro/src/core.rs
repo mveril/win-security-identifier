@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::LitStr;
 
-pub(crate) fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
+pub fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
     let components: SidComponents = input
         .value()
         .parse()

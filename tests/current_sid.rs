@@ -2,8 +2,8 @@
 #![cfg(windows)]
 #![cfg(feature = "std")]
 
-use std::process::{Command, Stdio};
 use serde::Deserialize;
+use std::process::{Command, Stdio};
 use win_security_identifier::{DomainAndName, SecurityIdentifier, SidType};
 
 #[derive(Debug, Deserialize)]
@@ -66,7 +66,7 @@ fn current_user_sid_and_account() {
         "SID does not match expected value"
     );
 
-    let lookup = sid.lookup_local_sid().expect("Failed to looup");
+    let lookup = sid.lookup_local_sid().unwrap().unwrap();
 
     assert_eq!(
         lookup.domain_name, expected_domain_name,
