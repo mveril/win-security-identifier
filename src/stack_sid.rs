@@ -77,11 +77,11 @@ impl StackSid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{StackSid, SidIdentifierAuthority};
-    /// let sid = StackSid::new_unchecked(
+    /// let sid = unsafe{StackSid::new_unchecked(
     ///         1,
     ///         SidIdentifierAuthority::NT_AUTHORITY,
     ///         &[32u32, 544u32],
-    ///     );
+    ///     )};
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
