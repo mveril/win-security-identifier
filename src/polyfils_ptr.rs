@@ -1,7 +1,7 @@
 use crate::sid::Sid;
 
 #[allow(dead_code)]
-pub(super) unsafe fn from_raw_parts_mut(src: *mut (), dynamic_size_count: usize) -> *mut Sid {
+pub(super) const unsafe fn from_raw_parts_mut(src: *mut (), dynamic_size_count: usize) -> *mut Sid {
     core::ptr::slice_from_raw_parts_mut(src, dynamic_size_count) as *mut Sid
 }
 
