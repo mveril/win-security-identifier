@@ -15,22 +15,48 @@ on:
 
 jobs:
   build-and-validate:
-    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - toolchain: stable
-            RUSTDOCFLAGS: "-D warnings"
-            DOCTYPE: "docrs"
-          - toolchain: nightly
-            RUSTDOCFLAGS: "-D warnings --cfg docsrs"
-            DOCTYPE: "doc"
+          - os: ubuntu-latest
+            toolchain: stable
+            rustdocflags: "-D warnings"
+            doc_type: docrs
+            run_clippy: true
+            run_fmt: true
+            run_audit: false
+          - os: ubuntu-latest
+            toolchain: nightly
+            rustdocflags: "-D warnings --cfg docsrs"
+            doc_type: doc
+            run_clippy: false
+            run_fmt: false
+            run_audit: true
+          - os: macos-latest
+            toolchain: stable
+            rustdocflags: "-D warnings"
+            doc_type: docrs
+            run_clippy: true
+            run_fmt: true
+            run_audit: false
+          - os: windows-latest
+            toolchain: stable
+            rustdocflags: "-D warnings"
+            doc_type: docrs
+            run_clippy: true
+            run_fmt: true
+            run_audit: false
 
-    name: "Build and validate (${{ matrix.toolchain}})"
+    runs-on: ${{ matrix.os }}
+    name: "Build and validate (${{ matrix.toolchain }} @ ${{ matrix.os }})"
     env:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -D warnings
-      RUSTDOCFLAGS: ${{ matrix.RUSTDOCFLAGS }}
+      RUSTDOCFLAGS: ${{ matrix.rustdocflags }}
 
     steps:
       - name: Checkout Code
@@ -50,16 +76,18 @@ jobs:
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-index-
 
-      - name: Install Rust (Matrix)
-        shell: pwsh
-        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup update "${{ matrix.toolchain }}"
+          rustup default "${{ matrix.toolchain }}"
 
-      - name: Lint with Clippy (Stable Only)
-        if: matrix.toolchain == 'stable'
+      - name: Lint with Clippy
+        if: matrix.run_clippy
         run: cargo clippy --all-targets --all-features --workspace
 
-      - name: Check Code Formatting (Stable Only)
-        if: matrix.toolchain == 'stable'
+      - name: Check Code Formatting
+        if: matrix.run_fmt
         run: cargo fmt -- --check
 
       - name: Build the Project
@@ -68,59 +96,12 @@ jobs:
       - name: Run Tests
         run: cargo test --workspace --all-features --verbose
 
-      - name: Generate Documentation (${{ matrix.DOCTYPE }}, ${{ matrix.toolchain }})
+      - name: Generate Documentation (${{ matrix.doc_type }}, ${{ matrix.toolchain }})
         run: cargo doc --no-deps --all-features
 
       - name: Install and Run Security Audit (Nightly Only)
-        if: matrix.toolchain == 'nightly'
+        if: matrix.run_audit
         run: |
           cargo install cargo-audit
           cargo audit
 
-  cross-compile:
-    name: "Cross Compilation for Windows targets on Linux (x86_64 only)"
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - triple: "x86_64-pc-windows-gnu"
-            linker: "x86_64-w64-mingw32-gcc"
-            ar: "x86_64-w64-mingw32-gcc-ar"
-          - triple: "x86_64-pc-windows-gnullvm"
-            linker: "x86_64-w64-mingw32-gcc"
-            ar: "x86_64-w64-mingw32-gcc-ar"
-    env:
-      CARGO_TERM_COLOR: always
-      RUSTFLAGS: -D warnings
-      RUST_BACKTRACE: 1
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust stable toolchain and add target
-        run: |
-          rustup update stable
-          rustup default stable
-          rustup target add ${{ matrix.target.triple }}
-
-      - name: Install cross-compilation toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang llvm mingw-w64
-
-      - name: Ensure xtask compilable and runable on Linux
-        run: cargo xtask --version
-
-      - name: Set up environment for Windows cross-compilation
-        shell: bash
-        run: |
-          trple=$(echo "${{ matrix.target.triple }}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
-          echo "Setting CARGO_TARGET_${var_name}_LINKER=${{ matrix.target.linker }}"
-          echo "CARGO_TARGET_${trple}_LINKER=${{ matrix.target.linker }}" >> $GITHUB_ENV
-          echo "CARGO_TARGET_${trple}_AR=${{ matrix.target.ar }}" >> $GITHUB_ENV
-
-      - name: Build Project for target ${{ matrix.target.triple }}
-        run: cargo build --target=${{ matrix.target.triple }} --all-features --release
-
-      - name: Run doc
-        run: cargo doc --target=${{ matrix.target.triple }} --no-deps --all-features

@@ -15,6 +15,9 @@ permissions:
 jobs:
   determine-tag:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     outputs:
       tag_name: ${{ steps.determine.outputs.tag }}
     steps:
@@ -25,7 +28,6 @@ jobs:
 
       - name: Determine tag to use
         id: determine
-        shell: bash
         run: |
           echo "Event: ${GITHUB_EVENT_NAME}"
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
@@ -75,7 +77,10 @@ jobs:
     # Le job de déploiement ne s'exécute que si un tag a été déterminé
     if: ${{ needs.determine-tag.outputs.tag_name != '' }}
     needs: determine-tag
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     env:
       # Le tag est accessible dans toutes les étapes via la variable TAG_NAME
       TAG_NAME: ${{ needs.determine-tag.outputs.tag_name }}
@@ -83,14 +88,13 @@ jobs:
       RUSTFLAGS: -D warnings
     steps:
       - name: Validate TAG_NAME presence
-        shell: pwsh
         run: |
-          if (-not $env:TAG_NAME -or $env:TAG_NAME -eq "") {
-              Write-Error "TAG_NAME is empty. Aborting deployment."
-              exit 1
-          } else {
-              Write-Host "TAG_NAME is set to $env:TAG_NAME."
-          }
+          set -euo pipefail
+          if [[ -z "${TAG_NAME}" ]]; then
+            echo "TAG_NAME is empty. Aborting deployment." >&2
+            exit 1
+          fi
+          echo "TAG_NAME is set to ${TAG_NAME}."
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -110,46 +114,37 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-index-
 
       - name: Install Rust
-        shell: pwsh
-        run: rustup update stable && rustup default stable
-
-      - name: Install PSSemVer
-        shell: pwsh
         run: |
-          try {
-            Import-Module -Name PSSemVer -ErrorAction Stop
-          } catch {
-            Write-Host "Installing PSSemVer module..."
-            Install-Module -Name PSSemVer -Scope CurrentUser -Force -ErrorAction Stop
-            Import-Module -Name PSSemVer -ErrorAction Stop
-          }
+          set -euo pipefail
+          rustup update stable
+          rustup default stable
 
-      - name: Validate tag with PSSemVer
+      - name: Validate tag and detect prerelease
         id: validate
-        shell: pwsh
         run: |
-          $tagName = "${env:TAG_NAME}"
-          Import-Module -Name PSSemVer -ErrorAction Stop
-          try {
-              $rawVersion = $tagName -replace '^v', ''
-              echo "version=$rawVersion" >> $env:GITHUB_ENV
-              $Version = [PSSemVer]::Parse($rawVersion)
-              $prereleaseValue = ($Version.Prerelease -ne $null).ToString().ToLower()
-              echo "prerelease=$prereleaseValue" >> $env:GITHUB_ENV
-              if (-not [string]::IsNullOrEmpty($Version.BuildMetadata)) {
-                echo "nuget_version=$($Version.BuildMetadata)" >> $env:GITHUB_ENV
-              } else {
-                Write-Host "No metadata found. Using version without metadata for NuGet."
-                echo "nuget_version=$rawVersion" >> $env:GITHUB_ENV
-              }
-          } catch {
-              Write-Error "Invalid semantic version in tag: $tagName"
-              exit 1
-          }
-        continue-on-error: false
+          set -euo pipefail
+          raw="${TAG_NAME#v}"
+          python3 - <<'PY' "$raw"
+import os
+import re
+import sys
+
+raw = sys.argv[1]
+pattern = r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
+match = re.match(pattern, raw)
+if not match:
+    print(f"Invalid semantic version in tag: v{raw}", file=sys.stderr)
+    sys.exit(1)
+prerelease_flag = 'true' if '-' in raw.split('+', 1)[0] else 'false'
+with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+    fh.write(f"version={raw}\n")
+    fh.write(f"prerelease={prerelease_flag}\n")
+PY
 
       - name: Run Cargo Publish in Dry-Run Mode
-        run: cargo publish --workspace --dry-run
+        run: |
+          set -euo pipefail
+          cargo publish --workspace --dry-run
 
       - name: Create GitHub Release
         id: release
@@ -163,6 +158,8 @@ jobs:
           prerelease: ${{ env.prerelease == 'true' }}
 
       - name: Cargo publish on crates.io
-        run: cargo publish --workspace
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cargo publish --workspace

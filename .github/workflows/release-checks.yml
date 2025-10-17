@@ -9,8 +9,11 @@ on:
 
 jobs:
   version-check:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     name: "Check crate versions"
+    defaults:
+      run:
+        shell: bash
     env:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -D warnings
@@ -28,77 +31,119 @@ jobs:
           key: ${{ runner.os }}-cargo-dependencies-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-dependencies-
 
-      - name: Cache PowerShell Modules
-        uses: actions/cache@v3
-        with:
-          path: C:\Users\runneradmin\Documents\PowerShell\Modules
-          key: ${{ runner.os }}-powershell-modules
-          restore-keys: ${{ runner.os }}-powershell-modules-
-
       - name: Install Rust
-        shell: pwsh
         run: |
+          set -euo pipefail
           rustup update stable
           rustup default stable
 
-      - name: Install PSSemVer
-        shell: pwsh
-        run: |
-          if (-not (Get-Module -ListAvailable -Name PSSemVer)) {
-            Install-Module -Name PSSemVer -Scope CurrentUser -Force -ErrorAction Stop
-          }
-          Import-Module -Name PSSemVer -ErrorAction Stop
-
       - name: Extract Branch Version
-        id: extract_version
-        shell: pwsh
         run: |
-          $branchName = "${{ github.ref_name }}"
-          $rawVersion = $branchName -replace '^release/', ''
-          Import-Module -Name PSSemVer -ErrorAction Stop
-          try {
-              $expectedVersion = [PSSemVer]::Parse($rawVersion)
-          } catch {
-              Write-Error "❌ ERROR: Failed to parse '$rawVersion' as a valid SemVer version."
-              exit 1
-          }
-          echo "EXPECTED_VERSION=$expectedVersion" >> $env:GITHUB_ENV
+          set -euo pipefail
+          branch="${GITHUB_REF_NAME}"
+          if [[ "$branch" != release/* ]]; then
+            echo "❌ ERROR: Branch '$branch' does not start with 'release/'" >&2
+            exit 1
+          fi
+          raw="${branch#release/}"
+          python3 - <<'PY' "$raw"
+import os
+import re
+import sys
+
+raw = sys.argv[1]
+pattern = r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
+if not re.match(pattern, raw):
+    print(f"❌ ERROR: '{raw}' is not a valid SemVer version.", file=sys.stderr)
+    sys.exit(1)
+with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+    fh.write(f"EXPECTED_VERSION={raw}\n")
+PY
 
       - name: Parse and Compare Crate Versions
-        shell: pwsh
         run: |
-          Import-Module -Name PSSemVer -ErrorAction Stop
-          try {
-              $expectedSemVer = [PSSemVer]::Parse($env:EXPECTED_VERSION)
-          } catch {
-              Write-Error "❌ ERROR: Expected version '$env:EXPECTED_VERSION' is not a valid semantic version."
-              exit 1
-          }
+          set -euo pipefail
           cargo generate-lockfile
-          $pkgid = cargo pkgid -p win-security-identifier --quiet
-          if ($pkgid -match "#(.+)$") {
-              $currentVersion = $matches[1]
-          } else {
-              Write-Error "❌ ERROR: Failed to extract version from cargo pkgid output: $pkgid"
-              exit 1
-          }
+          pkgid="$(cargo pkgid -p win-security-identifier --quiet)"
+          if [[ "$pkgid" != *#* ]]; then
+            echo "❌ ERROR: Failed to extract version from cargo pkgid output: $pkgid" >&2
+            exit 1
+          fi
+          current="${pkgid##*#}"
+          python3 - <<'PY' "$EXPECTED_VERSION" "$current"
+import re
+import sys
 
-          try {
-              $currentSemVer = [PSSemVer]::Parse($currentVersion)
-          } catch {
-              Write-Error "❌ ERROR: Current version '$currentVersion' is not a valid semantic version."
-              exit 1
-          }
+expected, current = sys.argv[1:3]
+pattern = r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
 
-          if ($currentSemVer.CompareTo($expectedSemVer) -ne 0) {
-              Write-Error "❌ ERROR: Crate version '$currentSemVer' does not match expected '$expectedSemVer'."
-              exit 1
-          }
+def parse(value: str):
+    match = re.match(pattern, value)
+    if not match:
+        print(f"❌ ERROR: '{value}' is not a valid SemVer version.", file=sys.stderr)
+        sys.exit(1)
+    major, minor, patch = (int(match.group(i)) for i in range(1, 4))
+    prerelease = match.group(4) or ""
+    build = match.group(5) or ""
+    return major, minor, patch, prerelease, build
+
+def compare_identifiers(lhs: str, rhs: str) -> int:
+    lhs_parts = lhs.split('.') if lhs else []
+    rhs_parts = rhs.split('.') if rhs else []
+    for left, right in zip(lhs_parts, rhs_parts):
+        if left == right:
+            continue
+        left_numeric = left.isdigit()
+        right_numeric = right.isdigit()
+        if left_numeric and right_numeric:
+            diff = int(left) - int(right)
+            if diff:
+                return diff
+        elif left_numeric:
+            return -1
+        elif right_numeric:
+            return 1
+        else:
+            if left < right:
+                return -1
+            return 1
+    return len(lhs_parts) - len(rhs_parts)
+
+def compare(lhs: str, rhs: str) -> int:
+    lhs_major, lhs_minor, lhs_patch, lhs_pre, _ = parse(lhs)
+    rhs_major, rhs_minor, rhs_patch, rhs_pre, _ = parse(rhs)
+
+    if lhs_major != rhs_major:
+        return lhs_major - rhs_major
+    if lhs_minor != rhs_minor:
+        return lhs_minor - rhs_minor
+    if lhs_patch != rhs_patch:
+        return lhs_patch - rhs_patch
+
+    if lhs_pre == rhs_pre:
+        return 0
+    if not lhs_pre:
+        return 1
+    if not rhs_pre:
+        return -1
+    return compare_identifiers(lhs_pre, rhs_pre)
+
+if compare(current, expected) != 0:
+    print(f"❌ ERROR: Crate version '{current}' does not match expected '{expected}'.", file=sys.stderr)
+    sys.exit(1)
+PY
 
   publish-dry-run:
     needs: version-check
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     name: "Publish Dry-Run"
+    defaults:
+      run:
+        shell: bash
     env:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -D warnings
@@ -117,19 +162,19 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-dependencies-
 
       - name: Install Rust
-        shell: pwsh
         run: |
+          set -euo pipefail
           rustup update stable
           rustup default stable
 
       - name: Run Tests
-        shell: pwsh
         run: |
+          set -euo pipefail
           cargo test --workspace --all-targets
 
       - name: Publish Dry-Run
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        shell: pwsh
         run: |
+          set -euo pipefail
           cargo publish --workspace --dry-run
