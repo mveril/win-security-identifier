@@ -29,140 +29,137 @@ jobs:
         run: |
           echo "Event: ${GITHUB_EVENT_NAME}"
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-              if [ "${{ github.event.pull_request.merged }}" = "true" ]; then
-                  echo "PR merged, creating tag..."
-                  branch="${GITHUB_HEAD_REF}"
-                  # S'assurer que la branche commence par 'release/'
-                  if [[ "$branch" != release/* ]]; then
-                      echo "Error: Branch '$branch' does not start with 'release/'"
-                      exit 1
-                  fi
-                  version="${branch#release/}"
-                  if [ -z "$version" ]; then
-                      echo "Error: Extracted version is empty."
-                      exit 1
-                  fi
-                  tag="v${version}"
-                  echo "Creating tag: $tag"
-                  git config user.name "GitHub Actions"
-                  git config user.email "actions@github.com"
-                  git tag "$tag" -a -m "Release version $version"
-                  git push origin "$tag"
-                  echo "tag=$tag" >> $GITHUB_OUTPUT
-              else
-                  echo "PR not merged. Doing nothing."
-                  # On n'émet pas de tag, ainsi le job suivant sera ignoré.
-                  echo "tag=" >> $GITHUB_OUTPUT
-                  exit 0
-              fi
-          elif [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-              echo "Push event detected."
-              tag="${GITHUB_REF#refs/tags/}"
-              if [ -z "$tag" ]; then
-                echo "Error: TAG value from push event is empty."
+            if [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+              echo "PR merged, creating tag..."
+              branch="${GITHUB_HEAD_REF}"
+              if [[ "$branch" != release/* ]]; then
+                echo "Error: Branch '$branch' does not start with 'release/'"
                 exit 1
               fi
-              echo "Using pushed tag: $tag"
-              echo "tag=$tag" >> $GITHUB_OUTPUT
-          else
-              echo "Error: Unsupported event '${GITHUB_EVENT_NAME}'."
+              version="${branch#release/}"
+              if [ -z "$version" ]; then
+                echo "Error: Extracted version is empty."
+                exit 1
+              fi
+              tag="v${version}"
+              echo "Creating tag: $tag"
+              git config user.name "GitHub Actions"
+              git config user.email "actions@github.com"
+              git tag "$tag" -a -m "Release version $version"
+              git push origin "$tag"
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            else
+              echo "PR not merged. Doing nothing."
+              echo "tag=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          elif [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "Push event detected."
+            tag="${GITHUB_REF#refs/tags/}"
+            if [ -z "$tag" ]; then
+              echo "Error: TAG value from push event is empty."
               exit 1
+            fi
+            echo "Using pushed tag: $tag"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "Error: Unsupported event '${GITHUB_EVENT_NAME}'."
+            exit 1
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   validate-and-release:
-    # Le job de déploiement ne s'exécute que si un tag a été déterminé
     if: ${{ needs.determine-tag.outputs.tag_name != '' }}
     needs: determine-tag
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     env:
-      # Le tag est accessible dans toutes les étapes via la variable TAG_NAME
       TAG_NAME: ${{ needs.determine-tag.outputs.tag_name }}
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -D warnings
     steps:
       - name: Validate TAG_NAME presence
-        shell: pwsh
+        shell: bash
         run: |
-          if (-not $env:TAG_NAME -or $env:TAG_NAME -eq "") {
-              Write-Error "TAG_NAME is empty. Aborting deployment."
-              exit 1
-          } else {
-              Write-Host "TAG_NAME is set to $env:TAG_NAME."
-          }
+          if [ -z "${TAG_NAME}" ]; then
+            echo "TAG_NAME is empty. Aborting deployment."
+            exit 1
+          fi
+          echo "TAG_NAME=${TAG_NAME}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache Cargo Registry
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Cargo Git Index
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-index-
-
-      - name: Install Rust
-        shell: pwsh
-        run: rustup update stable && rustup default stable
-
-      - name: Install PSSemVer
-        shell: pwsh
+      - name: Prepare Rust toolchain (stable)
+        shell: bash
         run: |
-          try {
-            Import-Module -Name PSSemVer -ErrorAction Stop
-          } catch {
-            Write-Host "Installing PSSemVer module..."
-            Install-Module -Name PSSemVer -Scope CurrentUser -Force -ErrorAction Stop
-            Import-Module -Name PSSemVer -ErrorAction Stop
-          }
+          rustup set profile minimal
+          rustup update stable
+          rustup default stable
+          rustup component add rustfmt clippy
 
-      - name: Validate tag with PSSemVer
-        id: validate
-        shell: pwsh
+      - name: Cache Cargo registry and git index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Parse and validate SemVer (no build metadata allowed)
+        id: semver
+        shell: bash
         run: |
-          $tagName = "${env:TAG_NAME}"
-          Import-Module -Name PSSemVer -ErrorAction Stop
-          try {
-              $rawVersion = $tagName -replace '^v', ''
-              echo "version=$rawVersion" >> $env:GITHUB_ENV
-              $Version = [PSSemVer]::Parse($rawVersion)
-              $prereleaseValue = ($Version.Prerelease -ne $null).ToString().ToLower()
-              echo "prerelease=$prereleaseValue" >> $env:GITHUB_ENV
-              if (-not [string]::IsNullOrEmpty($Version.BuildMetadata)) {
-                echo "nuget_version=$($Version.BuildMetadata)" >> $env:GITHUB_ENV
-              } else {
-                Write-Host "No metadata found. Using version without metadata for NuGet."
-                echo "nuget_version=$rawVersion" >> $env:GITHUB_ENV
-              }
-          } catch {
-              Write-Error "Invalid semantic version in tag: $tagName"
-              exit 1
-          }
-        continue-on-error: false
+          RAW="${TAG_NAME#v}"
 
-      - name: Run Cargo Publish in Dry-Run Mode
-        run: cargo publish --workspace --dry-run
+          # Fail if build metadata is present (e.g., +exp.sha)
+          if [[ "$RAW" == *"+"* ]]; then
+            echo "Error: Build metadata (+...) is not allowed in tags."
+            exit 1
+          fi
+
+          # SemVer: MAJOR.MINOR.PATCH[-PRERELEASE]
+          if [[ "$RAW" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z\.-]+))?$ ]]; then
+            VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+            PRERELEASE_PART="${BASH_REMATCH[5]}"
+            if [ -n "$PRERELEASE_PART" ]; then
+              PRERELEASE="true"
+              VERSION_FULL="${VERSION}-${PRERELEASE_PART}"
+            else
+              PRERELEASE="false"
+              VERSION_FULL="${VERSION}"
+            fi
+          else
+            echo "Error: Tag '${TAG_NAME}' is not a valid SemVer (expected vMAJOR.MINOR.PATCH[-PRERELEASE])."
+            exit 1
+          fi
+
+          echo "version=${VERSION_FULL}" >> "$GITHUB_ENV"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_ENV"
+
+      - name: Sanity checks (fmt, clippy, build, test)
+        shell: bash
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo build --workspace --all-features
+          cargo test --workspace --all-features --all-targets -- --nocapture
+
+      - name: Cargo publish (crates.io)
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # Publish prereleases and stable alike (SemVer prerelease is valid on crates.io)
+          cargo publish --workspace
 
       - name: Create GitHub Release
-        id: release
+        id: ghrel
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.prerelease == 'true' && 'Prerelease' || 'Release' }} ${{ env.TAG_NAME }}
           body: |
-            This is a **${{ env.prerelease == 'true' && 'prerelease' || 'release' }}** release of **${{ github.repository }}**.
-            - The crate is available on [Crates.io](https://crates.io/crates/win-security-identifier/${{ env.version }}).
+            Automated ${{ env.prerelease == 'true' && 'prerelease' || 'release' }} for ${{ github.repository }}.
+            Version: ${{ env.TAG_NAME }}
           prerelease: ${{ env.prerelease == 'true' }}
-
-      - name: Cargo publish on crates.io
-        run: cargo publish --workspace
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
