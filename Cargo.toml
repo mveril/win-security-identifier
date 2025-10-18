@@ -5,6 +5,7 @@ package.version = "0.1.0"
 package.authors = ["Mickaël Véril <mickael.veril@wanadoo.fr"]
 package.license = "MIT OR Apache-2.0"
 package.edition = "2024"
+package.repository = "https://github.com/mveril/win-security-identifier"
 
 [workspace.dependencies]
 arrayvec = "0.7"
@@ -26,6 +27,7 @@ license.workspace = true
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
 
 
 [features]
