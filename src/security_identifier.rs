@@ -158,6 +158,7 @@ impl SecurityIdentifier {
         let sub_authority_count = size_info.get_sub_authority_count();
         // SAFETY: `from_raw_parts_mut` builds a fat pointer to `Sid` with the
         // correct metadata (`sub_authority_count` elements in the trailing slice).
+        
         let mut ptr: NonNull<Sid> = unsafe {
             NonNull::new_unchecked(from_raw_parts_mut(
                 mem_ptr.cast::<()>(),
