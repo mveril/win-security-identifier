@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        toolchain: [stable]
+        toolchain: [stable, nightly]
     env:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -D warnings
@@ -63,12 +63,14 @@ jobs:
           rustc -Vv
           cargo -V
 
-      # --------------------------- Security audit ------------------------------
-      - name: Install cargo-audit
+      # --------------------------- Security audit (Ubuntu stable only) ---------
+      - name: Install cargo-audit (ubuntu-nightly only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
         run: |
-          cargo install cargo-audit || echo "cargo-audit already installed"
+          cargo install --locked cargo-audit || echo "cargo-audit already installed"
 
-      - name: Run cargo audit
+      - name: Run cargo audit (ubuntu-nightly only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
         run: cargo audit
 
       # --------------------------- Lints & tests -------------------------------
