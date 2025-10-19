@@ -316,7 +316,7 @@ mod tests {
         fn sid_hash_and_eq(sid1 in arb_security_identifier(), sid2 in arb_security_identifier()) {
             use std::collections::hash_map::DefaultHasher;
             // Reflexivity
-            prop_assert_eq!(&*sid1, &*sid2);
+            prop_assert_eq!(&*sid1, &*sid1);
 
             // If binary is identical, Eq must be true too (same logical SID)
             let sid2_clone = sid1.clone();
