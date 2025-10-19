@@ -8,6 +8,7 @@ use crate::utils::sub_authority_size_guard;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
 use parsing::SidComponents;
+#[cfg(all(windows, feature = "std"))]
 mod token_error;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
