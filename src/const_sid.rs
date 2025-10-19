@@ -10,7 +10,8 @@ use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
     array::TryFromSliceError,
     fmt::{self, Display},
-    hash::{self, Hash}, ptr,
+    hash::{self, Hash},
+    ptr,
 };
 #[cfg(feature = "std")]
 use std::borrow::ToOwned;
