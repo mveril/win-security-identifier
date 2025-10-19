@@ -155,6 +155,7 @@ mod test {
             fn test_prop_full_size_compare_windows(sub_authority_count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT) {
                 let info = SidSizeInfo::from_count(sub_authority_count ).unwrap();
                 let size = info.get_layout().size();
+                // SAFETY: if count is correct (between 1 and 15)
                 let winsize = unsafe {
                     GetSidLengthRequired(sub_authority_count)
                 } as usize;

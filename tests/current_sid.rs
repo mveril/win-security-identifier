@@ -2,6 +2,7 @@
 #![cfg(windows)]
 #![cfg(feature = "std")]
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
+#![allow(clippy::unwrap_used, reason = "Unwrap is not an issue in tests")]
 
 use serde::Deserialize;
 use std::process::{Command, Stdio};
