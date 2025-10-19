@@ -193,6 +193,10 @@ impl SecurityIdentifier {
         clippy::missing_inline_in_public_items,
         reason = "Cannot be inlined because it's a big method"
     )]
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "complex method it's difficult to inline it"
+    )]
     pub fn get_current_user_sid() -> Result<Self, TokenError> {
         use core::mem::MaybeUninit;
         use core::ptr;
