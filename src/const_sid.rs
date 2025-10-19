@@ -344,17 +344,18 @@ mod test {
         let mut hasher2 = DefaultHasher::default();
         sid.hash(&mut hasher1);
         sid.as_ref().hash(&mut hasher2);
-        assert_eq!(hasher1.finish(), hasher2.finish())
+        assert_eq!(hasher1.finish(), hasher2.finish());
     }
 
     #[cfg(feature = "alloc")]
+    #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
     #[test]
     fn test_layout_matches_sid() {
         use crate::SidSizeInfo;
         use core::alloc::Layout;
         let size = SidSizeInfo::from_count(1).unwrap();
         let layout = size.get_layout();
-        assert_eq!(Layout::new::<ConstSid<1>>(), layout)
+        assert_eq!(Layout::new::<ConstSid<1>>(), layout);
     }
     #[cfg(feature = "macro")]
     #[test]
@@ -374,7 +375,7 @@ mod test {
         let expected_sid: SecurityIdentifier = formatted.parse().unwrap();
         let sid = well_known::BUILTIN_ADMINISTRATORS;
         assert_eq!(sid, expected_sid);
-        assert_eq!(sid.to_string(), formatted)
+        assert_eq!(sid.to_string(), formatted);
     }
 
     #[cfg(feature = "alloc")]

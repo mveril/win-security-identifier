@@ -72,7 +72,7 @@ impl From<SidIdentifierAuthority> for [u8; 6] {
 }
 
 #[cfg(test)]
-pub(crate) mod test {
+pub mod test {
     use super::*;
     use proptest::prelude::*;
     prop_compose! {

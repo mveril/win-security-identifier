@@ -74,7 +74,7 @@ impl SidSizeInfo {
         }
     }
 }
-
+#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[cfg(test)]
 mod test {
     use super::*;
@@ -129,7 +129,7 @@ mod test {
 
         #[test]
         fn prop_invalid_size_return_none(size in  arb_invalid_size()){
-            prop_assert!(SidSizeInfo::from_full_size(size).is_none())
+            prop_assert_eq!(SidSizeInfo::from_full_size(size), None);
         }
 
         #[test]
