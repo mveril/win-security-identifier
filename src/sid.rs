@@ -289,6 +289,7 @@ impl TryFrom<&[u8]> for &Sid {
         )
     }
 }
+#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "alloc")]
@@ -313,13 +314,13 @@ mod tests {
         }
         #[test]
         fn sid_hash_and_eq(sid1 in arb_security_identifier(), sid2 in arb_security_identifier()) {
+            use std::collections::hash_map::DefaultHasher;
             // Reflexivity
-            prop_assert_eq!(sid1.deref(), sid1.deref());
+            prop_assert_eq!(&*sid1, &*sid2);
 
             // If binary is identical, Eq must be true too (same logical SID)
             let sid2_clone = sid1.clone();
             prop_assert_eq!(&sid1, &sid2_clone);
-            use std::collections::hash_map::DefaultHasher;
             let mut hasher1 = DefaultHasher::new();
             sid1.hash(&mut hasher1);
             let mut hasher2 = DefaultHasher::new();

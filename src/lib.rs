@@ -134,6 +134,7 @@ pub(crate) use security_identifier::test::arb_security_identifier;
 pub use sid_identifier_authority::SidIdentifierAuthority;
 
 #[cfg(test)]
+#[allow(unused_imports)]
 pub(crate) use sid_identifier_authority::test::arb_identifier_authority;
 
 mod const_sid;

@@ -297,6 +297,7 @@ impl FromStr for DomainAndName {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 mod tests {
     use super::*;
     use proptest::prelude::*;
@@ -304,7 +305,7 @@ mod tests {
     proptest! {
         #[test]
         fn roundtrip_default_policy(domain in r"[^\x00\\]*", name in r"[^\x00\\]+") {
-        let input = format!("{}\\{}", domain, name);
+        let input = format!("{domain}\\{name}");
         let parsed = DomainAndName::from_str(&input).expect("parse failed");
         assert_eq!(parsed.to_string(), input);
         assert_eq!(parsed.domain, OsString::from(&domain));
@@ -326,6 +327,8 @@ mod tests {
 
     #[test]
     fn empty_segments_by_policy() {
+        // Custom: forbid empty domain too.
+        const P: ParsePolicy = ParsePolicy::new(false, false, None, b"\\\0");
         // Default: empty domain OK, empty name not OK.
         assert!(DomainAndName::from_str("\\user").is_ok());
         assert!(matches!(
@@ -333,8 +336,6 @@ mod tests {
             Err(DomainParsingError::EmptyName)
         ));
 
-        // Custom: forbid empty domain too.
-        const P: ParsePolicy = ParsePolicy::new(false, false, None, b"\\\0");
         assert!(matches!(
             DomainAndName::parse_with_policy(&P, "\\user"),
             Err(DomainParsingError::EmptyDomain)

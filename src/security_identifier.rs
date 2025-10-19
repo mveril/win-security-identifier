@@ -192,10 +192,6 @@ impl SecurityIdentifier {
     #[cfg(all(windows, feature = "std"))]
     #[expect(
         clippy::missing_inline_in_public_items,
-        reason = "Cannot be inlined because it's a big method"
-    )]
-    #[expect(
-        clippy::missing_inline_in_public_items,
         reason = "complex method it's difficult to inline it"
     )]
     pub fn get_current_user_sid() -> Result<Self, TokenError> {
@@ -516,8 +512,10 @@ impl PartialEq for SecurityIdentifier {
     }
 }
 
+#[allow(clippy::expect_used, reason = "Expect is not an issue on tests")]
+#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in tests")]
 #[cfg(test)]
-pub(crate) mod test {
+pub mod test {
     use super::super::SecurityIdentifier;
     use super::super::Sid;
     use super::super::sid_identifier_authority::test::arb_identifier_authority;
@@ -528,10 +526,8 @@ pub(crate) mod test {
     use core::alloc::Layout;
     use core::hash::Hash;
     use core::hash::Hasher;
-    use core::ops::Deref;
     #[cfg(has_ptr_metadata)]
     use core::ptr::metadata;
-
     pub fn arb_security_identifier() -> impl Strategy<Value = SecurityIdentifier> {
         (
             Just(1u8), // revision
@@ -560,7 +556,7 @@ pub(crate) mod test {
 
             // ToOwned et Eq
             let owned_sid = sid.to_owned();
-            let sid2 = owned_sid.deref();
+            let sid2 = &*owned_sid;
             prop_assert_eq!(sid, sid2, "to_owned then deref should yield eq sids");
 
             // Hash
@@ -604,6 +600,7 @@ pub(crate) mod test {
         #[cfg(has_layout_for_ptr)]
         #[test]
         fn test_layout_for_ptr(security_identifier in arb_security_identifier()){
+            // SAFETY: It's just to test this method
             let raw_layout = unsafe{
                 Layout::for_value_raw(security_identifier.sid.as_ptr())
             };
