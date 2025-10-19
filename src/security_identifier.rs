@@ -523,13 +523,13 @@ pub mod test {
     use super::super::sid_identifier_authority::test::arb_identifier_authority;
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfils_ptr::metadata;
-    use proptest::prelude::*;
-
+    #[cfg(has_layout_for_ptr)]
     use core::alloc::Layout;
     use core::hash::Hash;
     use core::hash::Hasher;
     #[cfg(has_ptr_metadata)]
     use core::ptr::metadata;
+    use proptest::prelude::*;
     pub fn arb_security_identifier() -> impl Strategy<Value = SecurityIdentifier> {
         (
             Just(1u8), // revision
