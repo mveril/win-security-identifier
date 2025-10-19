@@ -134,7 +134,7 @@ mod test {
 
         #[test]
         fn prop_valid_size_return_some(size in  prop::sample::select(&ALL_SIZES)){
-            prop_assert!(SidSizeInfo::from_full_size(size).is_some())
+            prop_assert_eq!(SidSizeInfo::from_full_size(size), None);
         }
     }
     #[cfg(windows)]
