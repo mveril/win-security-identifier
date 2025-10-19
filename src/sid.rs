@@ -107,11 +107,11 @@ impl Sid {
     }
 
     const unsafe fn from_raw_internal<'a>(raw: *const ()) -> &'a Self {
-        // Safety: precondition defined in the method doc.
         #[expect(
             clippy::multiple_unsafe_ops_per_block,
             reason = "single unsafe block for clarity"
         )]
+        // Safety: precondition defined in the method doc.
         unsafe {
             // Read sub_authority_count by forging a fat pointer with metadata=0 first.
             let metadata = {
