@@ -1,29 +1,46 @@
+#[cfg(not(feature = "alloc"))]
 use arrayvec::ArrayString;
-use core::fmt::{self, Display, Write};
+use cfg_if::cfg_if;
+#[cfg(feature = "alloc")]
+use core::fmt;
+#[cfg(not(feature = "alloc"))]
+use core::fmt::Write;
+#[cfg(feature = "alloc")]
 use core::str::FromStr;
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+#[cfg(feature = "alloc")]
+use serde::{Deserialize, Deserializer, de};
+use serde::{Serialize, Serializer, ser};
 
 #[cfg(feature = "alloc")]
 use crate::SecurityIdentifier;
 use crate::{ConstSid, Sid, internal::SidLenValid};
 
 impl Serialize for Sid {
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
+        S::Error: ser::Error, // ensure S::Error implements serde::ser::Error
     {
         if serializer.is_human_readable() {
-            let mut output_string = ArrayString::<256>::new();
-            write!(&mut output_string, "{}", &self);
-            serializer.serialize_str(&output_string.as_str())
+            cfg_if! {
+                if #[cfg(feature = "alloc")] {
+                    serializer.collect_str(self)
+                } else {
+                    let mut output_string = ArrayString::<256>::new();
+                    write!(&mut output_string, "{}", &self).map_err(|_| ser::Error::custom("failed to format Sid for human-readable serialization"))?;
+                    serializer.serialize_str(output_string.as_str())
+                }
+            }
         } else {
-            unsafe { serializer.serialize_bytes(self.as_binary()) }
+            serializer.serialize_bytes(self.as_binary())
         }
     }
 }
 
 #[cfg(feature = "alloc")]
 impl Serialize for SecurityIdentifier {
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -34,13 +51,14 @@ impl Serialize for SecurityIdentifier {
 
 #[cfg(feature = "std")]
 impl<'de> Deserialize<'de> for SecurityIdentifier {
+    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         struct SidVisitor;
 
-        impl<'de> de::Visitor<'de> for SidVisitor {
+        impl de::Visitor<'_> for SidVisitor {
             type Value = SecurityIdentifier;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -60,7 +78,6 @@ impl<'de> Deserialize<'de> for SecurityIdentifier {
                 E: de::Error,
             {
                 SecurityIdentifier::from_bytes(v)
-                    .map(SecurityIdentifier::from)
                     .map_err(|_| E::invalid_value(de::Unexpected::Bytes(v), &self))
             }
         }
@@ -77,6 +94,7 @@ impl<const N: usize> Serialize for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

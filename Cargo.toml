@@ -32,8 +32,8 @@ repository.workspace = true
 
 [features]
 default = ["std"]
-std = ["alloc", "dep:smallvec"]
-alloc = []
+std = ["alloc", "dep:smallvec", "serde?/std"]
+alloc = ["serde?/alloc"]
 macro = ["dep:sid_macro"]
 serde = ["dep:serde", "dep:arrayvec"]
 

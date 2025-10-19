@@ -1,4 +1,6 @@
-use crate::sid::{MAX_SUBAUTHORITY_COUNT, MIN_SUBAUTHORITY_COUNT, SID_HEAD_SIZE, SidHead};
+#[cfg(feature = "alloc")]
+use crate::sid::SID_HEAD_SIZE;
+use crate::sid::{MAX_SUBAUTHORITY_COUNT, MIN_SUBAUTHORITY_COUNT, SidHead};
 use crate::utils::sub_authority_size_guard;
 use core::alloc::Layout;
 
@@ -11,6 +13,7 @@ impl SidSizeInfo {
     // Safety: `MIN_SUBAUTHORITY_COUNT` is known to be valid.
     pub const MIN: Self = unsafe { Self::from_count(MIN_SUBAUTHORITY_COUNT).unwrap_unchecked() };
     // Safety: `MAX_SUBAUTHORITY_COUNT` is known to be valid.
+    #[allow(dead_code)]
     pub const MAX: Self = unsafe { Self::from_count(MAX_SUBAUTHORITY_COUNT).unwrap_unchecked() };
 
     pub const fn from_count(sub_authority_count: u8) -> Option<Self> {
@@ -24,6 +27,7 @@ impl SidSizeInfo {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub const fn get_sub_authority_count(self) -> u8 {
         self.sub_authority_count
     }

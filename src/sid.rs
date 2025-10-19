@@ -20,7 +20,7 @@ pub use parsing::MIN_SUBAUTHORITY_COUNT;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts;
 #[cfg(has_ptr_metadata)]
-use std::ptr::from_raw_parts;
+use core::ptr::from_raw_parts;
 
 use crate::{SidIdentifierAuthority, SidSizeInfo, utils::sub_authority_size_guard};
 
@@ -72,7 +72,7 @@ pub struct SidHead {
     pub sub_authority_count: u8,
     pub identifier_authority: SidIdentifierAuthority,
 }
-
+#[allow(dead_code)]
 pub const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 
 impl Sid {
@@ -130,6 +130,7 @@ impl Sid {
     /// - Same preconditions as `as_binary`.
     /// - Mutating the buffer must preserve SID invariants (e.g., do not desynchronize
     ///   `sub_authority_count` and the tail length).
+    #[allow(dead_code)]
     pub(crate) const unsafe fn as_binary_mut(&mut self) -> &mut [u8] {
         // Safety: Precondition definied in the method doc.
         unsafe {
