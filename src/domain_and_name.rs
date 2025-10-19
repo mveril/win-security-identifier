@@ -211,7 +211,7 @@ fn platform_forbidden_check(
             if policy.forbidden_ascii.contains(&b) {
                 return Err(DomainParsingError::ForbiddenUnit {
                     which,
-                    unit: u32::from(b)
+                    unit: u32::from(b),
                     index: idx,
                 });
             }
