@@ -515,6 +515,8 @@ impl PartialEq for SecurityIdentifier {
 #[allow(clippy::expect_used, reason = "Expect is not an issue on tests")]
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in tests")]
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
+#[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
 pub mod test {
     use super::super::SecurityIdentifier;
     use super::super::Sid;
@@ -544,6 +546,8 @@ pub mod test {
     proptest! {
         #[test]
         fn test_sid_properties(security_identifier in arb_security_identifier()) {
+            // Hash
+            use std::collections::hash_map::DefaultHasher;
             // Test access to inner Sid
             let sid: &Sid = security_identifier.as_ref();
 
@@ -559,8 +563,6 @@ pub mod test {
             let sid2 = &*owned_sid;
             prop_assert_eq!(sid, sid2, "to_owned then deref should yield eq sids");
 
-            // Hash
-            use std::collections::hash_map::DefaultHasher;
             let mut h1 = DefaultHasher::new();
             sid.hash(&mut h1);
             let mut h2 = DefaultHasher::new();

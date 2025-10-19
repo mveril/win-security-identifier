@@ -330,6 +330,8 @@ where
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
+#[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
 mod test {
     #[cfg(feature = "std")]
     use super::*;
