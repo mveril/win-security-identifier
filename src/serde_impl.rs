@@ -107,7 +107,7 @@ where
 mod test {
     const SID: ConstSid<3> =
         ConstSid::new(1, crate::SidIdentifierAuthority::NT_AUTHORITY, [5, 32, 544]);
-    const bytes: &'static [u8] = SID.as_sid().as_binary();
+    const BYTES: &'static [u8] = SID.as_sid().as_binary();
     use core::ops::Deref;
 
     use crate::ConstSid;
@@ -115,7 +115,7 @@ mod test {
     use serde_test::{self, Configure, Token};
     #[test]
     fn test_binary_const() {
-        serde_test::assert_ser_tokens(&SID.as_sid().compact(), &[Token::Bytes(bytes)]);
+        serde_test::assert_ser_tokens(&SID.as_sid().compact(), &[Token::Bytes(BYTES)]);
     }
 
     #[test]
