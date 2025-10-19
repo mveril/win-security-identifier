@@ -82,11 +82,11 @@ impl<'a> SidLookupOperation<'a> {
             Some(Error::Other(ERROR_INSUFFICIENT_BUFFER)) => self.process(),
             Some(err) => Err(err),
             None => {
-                // Safety: The buffers was allocated with the correct capacity and the call to `LookupAccountSidW` fill the buffers.
                 #[expect(
                     clippy::multiple_unsafe_ops_per_block,
                     reason = "Same operation so same safety doc"
                 )]
+                // Safety: The buffers was allocated with the correct capacity and the call to `LookupAccountSidW` fill the buffers.
                 unsafe {
                     name_buffer.set_len(self.name_len as usize);
                     domain_buffer.set_len(self.domain_len as usize);
