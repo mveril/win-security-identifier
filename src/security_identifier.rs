@@ -618,6 +618,8 @@ pub mod test {
 
     #[cfg(windows)]
     mod windows {
+        use core::ptr;
+
         use crate::SecurityIdentifier;
 
         use super::arb_security_identifier;
@@ -628,22 +630,25 @@ pub mod test {
             #[test]
             fn test_init_sid_matches_rust_bytes(sid in arb_security_identifier()) {
                 let subauth = sid.get_sub_authorities();
+                #[expect(clippy::cast_possible_truncation, reason="No truncation here because of range of subathority is between 1-15")]
                 let n = subauth.len() as u8;
-
+                // SAFETY: GetSidLengthRequired is safe for sid Length
                 let required_size = unsafe { GetSidLengthRequired(n) } as usize;
                 let mut buffer = vec![0u8; required_size];
+                #[expect(clippy::cast_ptr_alignment, reason = "Unaligned pointer is not an issue for windows API")]
                 let sid_ptr = buffer.as_mut_ptr() as *mut SID;
-
+                // SAFETY: InitializeSid is ok with the good buffer.
+                #[expect(clippy::multiple_unsafe_ops_per_block, reason="Not realy an issue in tests")]
                 unsafe {
                     let ok = InitializeSid(
                         sid_ptr.cast(),
-                        &sid.identifier_authority as *const _ as *const SID_IDENTIFIER_AUTHORITY,
+                        ptr::from_ref(&sid.identifier_authority).cast::<SID_IDENTIFIER_AUTHORITY>(),
                         n,
                     );
                     prop_assert!(ok != 0, "InitializeSid failed");
 
                     for (i, &sa) in subauth.iter().enumerate() {
-                        let ptr = GetSidSubAuthority(sid_ptr.cast(), i as u32);
+                        let ptr = GetSidSubAuthority(sid_ptr.cast(), u32::try_from(i).unwrap());
                         prop_assert!(!ptr.is_null(), "GetSidSubAuthority null at index {}", i);
                         *ptr = sa;
                     }
@@ -670,14 +675,13 @@ pub mod test {
                 result.err()
             );
             let sid = result.unwrap();
+            // Safety: this method are always safe to call.
+            #[expect(clippy::multiple_unsafe_ops_per_block, reason = "allowed in tests")]
             let result = unsafe {
-                if IsValidSid(sid.as_raw()) == 0 {
-                    Some(windows_sys::Win32::Foundation::GetLastError())
-                } else {
-                    None
-                }
+                (IsValidSid(sid.as_raw()) == 0)
+                    .then_some(windows_sys::Win32::Foundation::GetLastError())
             };
-            assert!(result.is_none(), "SID is not valid: {result:?}");
+            assert_eq!(result, None, "SID is not valid: {result:?}");
         }
     }
 }

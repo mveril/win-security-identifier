@@ -1,6 +1,7 @@
 // Windows-only integration test that fetches SID + DOMAIN\Name with canonical casing
 #![cfg(windows)]
 #![cfg(feature = "std")]
+#![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 
 use serde::Deserialize;
 use std::process::{Command, Stdio};
@@ -42,13 +43,11 @@ fn current_user_sid_and_account() {
     ];
 
     let out = run_powershell(args).expect("Failed to launch PowerShell");
-
-    if !out.status.success() {
-        panic!(
-            "PowerShell failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
+    assert!(
+        out.status.success(),
+        "PowerShell failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let user: PsUser =
         serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell");
