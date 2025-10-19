@@ -342,8 +342,6 @@ mod tests {
 
     #[cfg(windows)]
     mod windows {
-        use core::ops::Deref;
-
         use super::super::*;
         #[cfg(feature = "alloc")]
         use crate::arb_security_identifier;
@@ -356,52 +354,106 @@ mod tests {
 
         #[cfg(feature = "std")]
         proptest! {
-            #[test]
-            fn test_to_string_windows_parsable(r_sid in arb_security_identifier()) {
-                unsafe {
-                    let sid_str = r_sid.to_string();
-                    let sid_wstr = WideCString::from_str_unchecked(sid_str.as_str());
-                    let mut sid_uninit: MaybeUninit<*mut c_void> = MaybeUninit::uninit();
-                    let error =
-                        if ConvertStringSidToSidW(sid_wstr.as_ptr(), sid_uninit.as_mut_ptr()) == 0 {
-                            Some(GetLastError())
-                        } else {
-                            None
-                        };
-                    prop_assert_eq!(error, None);
-                    let sid = sid_uninit.assume_init();
-                    prop_assert!(!sid.is_null());
-                    let sid_ref = Sid::from_raw(sid);
-                    prop_assert_eq!(
-                        sid_ref.to_string(),
-                        sid_str
-                    );
-                    prop_assert_eq!(sid_ref, r_sid.deref());
-                    LocalFree(sid as *mut c_void);
-                }
-            }
+        #[test]
+        fn test_to_string_windows_parsable(r_sid in arb_security_identifier()) {
+            let sid_str = r_sid.to_string();
 
-            #[test]
-            fn test_to_string_same(sid in arb_security_identifier()) {
-                unsafe {
+            // SAFETY: Building a wide string from our UTF-8 Rust string.
+            // `from_str_unchecked` skips interior NUL checks by design; we rely on `to_string()` not producing NULs.
+            let sid_wstr = unsafe{ WideCString::from_str_unchecked(sid_str.as_str())};
+
+            // Will be written by the WinAPI on success. Uninitialized for now.
+            let mut sid_uninit: MaybeUninit<*mut c_void> = MaybeUninit::uninit();
+
+            // Call the WinAPI and capture a possible error code.
+            let error = {
+                // SAFETY:
+                // - `sid_wstr.as_ptr()` yields a valid pointer to a NUL-terminated UTF-16 buffer
+                //   whose lifetime extends through this call.
+                // - `sid_uninit.as_mut_ptr()` is a valid out-parameter of type `*mut *mut c_void`.
+                // - On success (nonzero return), the API initializes it with a non-null pointer
+                //   to a SID allocated by the system (LocalAlloc).
+                // - On failure (return == 0), the out-parameter must be considered uninitialized
+                //   and MUST NOT be freed.
+                let ok = unsafe { ConvertStringSidToSidW(sid_wstr.as_ptr(), sid_uninit.as_mut_ptr()) };
+                // SAFETY: `GetLastError` reads the thread-local last-error; calling immediately after
+                // the failing WinAPI is the canonical usage.
+                (ok == 0).then_some(unsafe { GetLastError() })};
+
+            // If the call failed, the test exits here; we never touch the uninitialized pointer.
+            prop_assert_eq!(error, None);
+
+            // From here, the out-parameter is initialized by the OS. It is safe to assume_init().
+            // SAFETY:
+            // - We just asserted success (`error == None`), so `sid_uninit` has been written by
+            //   ConvertStringSidToSidW and now holds a valid, non-null pointer to a system-allocated SID.
+            let sid = unsafe {
+                sid_uninit.assume_init()
+            };
+            prop_assert!(!sid.is_null());
+
+            // SAFETY: of using the raw pointer is delegated to `Sid::from_raw`'s contract (constructor function):
+            // it must not outlive the underlying allocation and must not assume ownership.
+            let sid_ref = unsafe{ Sid::from_raw(sid)};
+
+            prop_assert_eq!(sid_ref.to_string(), sid_str);
+            prop_assert_eq!(sid_ref, &*r_sid);
+            // SAFETY:
+            // - The SID pointer was allocated by the system (LocalAlloc via ConvertStringSidToSidW).
+            // - We are freeing it exactly once, and we have no remaining aliases used after this call.
+            unsafe {
+                LocalFree(sid.cast::<c_void>());
+            }
+        }
+
+
+                #[test]
+                fn test_to_string_same(sid in arb_security_identifier()) {
                     let sid_str = sid.to_string();
+
                     let mut sid_wstr_uninit = MaybeUninit::<*mut u16>::uninit();
-                    let error =
-                        if ConvertSidToStringSidW(sid.as_raw(), sid_wstr_uninit.as_mut_ptr()) == 0 {
-                            Some(GetLastError())
-                        } else {
-                            None
-                        };
+
+                    let error = {
+                        // SAFETY:
+                        // - `sid.as_raw()` must yield a non-null pointer to a valid SID for the duration of the call.
+                        //   This is guaranteed by the property of `sid` and its lifetime within this test.
+                        // - `sid_wstr_uninit.as_mut_ptr()` is a valid out-parameter of type `*mut *mut u16`.
+                        //   On success (nonzero return), the API initializes it with a non-null pointer to a
+                        //   NUL-terminated UTF-16 string allocated by LocalAlloc.
+                        // - On failure (return == 0), the out-parameter must be considered uninitialized and MUST NOT be freed.
+                        let ok = unsafe { ConvertSidToStringSidW(sid.as_raw(), sid_wstr_uninit.as_mut_ptr()) };
+                        (ok == 0).then_some(
+                            // SAFETY: Get last error is always safe
+                            unsafe { GetLastError() })
+                    };
+
                     prop_assert_eq!(error, None);
-                    let sid_wstr_ptr = sid_wstr_uninit.assume_init();
+
+                    // SAFETY:
+                    // - We just asserted success (`error == None`), so `sid_wstr_uninit` has been written by
+                    //   ConvertSidToStringSidW and now holds a valid pointer.
+                    let sid_wstr_ptr = unsafe {
+                        sid_wstr_uninit.assume_init()
+                    };
                     prop_assert!(!sid_wstr_ptr.is_null());
+
                     {
-                        let sid_wstr = WideCStr::from_ptr_str(sid_wstr_ptr);
+                        // SAFETY:
+                        // - On success, the API guarantees `sid_wstr_ptr` points to a valid, NUL-terminated UTF-16 buffer.
+                        // - `WideCStr::from_ptr_str` reads until the first NUL and does not take ownership.
+                        let sid_wstr = unsafe { WideCStr::from_ptr_str(sid_wstr_ptr) };
                         prop_assert_eq!(sid_str, sid_wstr.to_string_lossy());
                     }
-                    LocalFree(sid_wstr_ptr as *mut c_void);
+
+                    // Release the system-allocated buffer exactly once.
+                    // SAFETY:
+                    // - The buffer was allocated by the system (LocalAlloc via ConvertSidToStringSidW).
+                    // - We are freeing it exactly once, and we have no remaining aliases used after this call.
+                    unsafe {
+                        LocalFree(sid_wstr_ptr.cast::<c_void>());
+                    }
                 }
-            }
+
         }
     }
 }

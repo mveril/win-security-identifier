@@ -190,9 +190,9 @@ impl SecurityIdentifier {
     /// # }
     /// ```
     #[cfg(all(windows, feature = "std"))]
-    #[expect(
+    #[allow(
         clippy::missing_inline_in_public_items,
-        reason = "complex method it's difficult to inline it"
+        reason = "Too complex to inline"
     )]
     pub fn get_current_user_sid() -> Result<Self, TokenError> {
         use core::mem::MaybeUninit;
@@ -512,11 +512,9 @@ impl PartialEq for SecurityIdentifier {
     }
 }
 
+#[cfg(test)]
 #[allow(clippy::expect_used, reason = "Expect is not an issue on tests")]
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in tests")]
-#[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
-#[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
 pub mod test {
     use super::super::SecurityIdentifier;
     use super::super::Sid;
@@ -636,7 +634,7 @@ pub mod test {
                 let required_size = unsafe { GetSidLengthRequired(n) } as usize;
                 let mut buffer = vec![0u8; required_size];
                 #[expect(clippy::cast_ptr_alignment, reason = "Unaligned pointer is not an issue for windows API")]
-                let sid_ptr = buffer.as_mut_ptr() as *mut SID;
+                let sid_ptr = buffer.as_mut_ptr().cast::<SID>();
                 // SAFETY: InitializeSid is ok with the good buffer.
                 #[expect(clippy::multiple_unsafe_ops_per_block, reason="Not realy an issue in tests")]
                 unsafe {
