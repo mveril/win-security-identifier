@@ -208,10 +208,10 @@ fn platform_forbidden_check(
     {
         use std::os::unix::ffi::OsStrExt;
         for (idx, &b) in s.as_bytes().iter().enumerate() {
-            if policy.forbidden_ascii.iter().any(|&fb| fb == b) {
+            if policy.forbidden_ascii.contains(&b) {
                 return Err(DomainParsingError::ForbiddenUnit {
                     which,
-                    unit: b as u32,
+                    unit: u32::from(b)
                     index: idx,
                 });
             }
