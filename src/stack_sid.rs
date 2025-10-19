@@ -7,12 +7,12 @@ use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
 use crate::utils::sub_authority_size_guard;
 use crate::{Sid, SidIdentifierAuthority};
+use core::fmt::Display;
 use core::mem::MaybeUninit;
-use core::ptr::copy_nonoverlapping;
+use core::ptr::{self, copy_nonoverlapping};
 use core::str::FromStr;
 use delegate::delegate;
 use parsing;
-use std::fmt::Display;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -122,7 +122,7 @@ impl StackSid {
     #[inline]
     #[must_use]
     pub const fn as_sid(&self) -> &Sid {
-        let raw: *const () = std::ptr::from_ref(self).cast();
+        let raw: *const () = ptr::from_ref(self).cast();
         // SAFETY: Construct a fat pointer to `Sid` with metadata `N` that
         // matches `sub_authority_count`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals `sub_authority_count`.
@@ -135,7 +135,7 @@ impl StackSid {
     /// with a trailing slice of sub-authorities.
     #[inline]
     pub fn as_sid_mut(&mut self) -> &mut Sid {
-        let raw: *mut () = std::ptr::from_mut(self).cast();
+        let raw: *mut () = ptr::from_mut(self).cast();
         // SAFETY: same justification as `as_sid`, but for a mutable reference.
         unsafe { &mut *from_raw_parts_mut(raw, self.sub_authority_count as usize) }
     }

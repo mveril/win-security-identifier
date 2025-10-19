@@ -10,7 +10,7 @@ use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
     array::TryFromSliceError,
     fmt::{self, Display},
-    hash::{self, Hash},
+    hash::{self, Hash}, ptr,
 };
 #[cfg(feature = "std")]
 use std::borrow::ToOwned;
@@ -114,7 +114,7 @@ where
         // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
         // matches `sub_authority.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
-        unsafe { &*from_raw_parts(std::ptr::from_ref(self).cast::<()>(), N) }
+        unsafe { &*from_raw_parts(ptr::from_ref(self).cast::<()>(), N) }
     }
 
     /// Returns a mut reference to this `ConstSid` as a dynamically-sized [`Sid`].
@@ -150,7 +150,7 @@ where
         // Safety: We construct a fat pointer to `Sid` with metadata `N` that
         // matches `sub_authority.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
-        unsafe { &mut *from_raw_parts_mut(std::ptr::from_mut(self).cast::<()>(), N) }
+        unsafe { &mut *from_raw_parts_mut(ptr::from_mut(self).cast::<()>(), N) }
     }
 
     /// Returns the raw binary representation of this `ConstSid` as a byte slice.
@@ -178,7 +178,7 @@ where
     #[inline]
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8] {
-        let binary_ptr = std::ptr::from_ref(self).cast::<u8>();
+        let binary_ptr = ptr::from_ref(self).cast::<u8>();
         // Safety: The layout of `ConstSid` is known and stable, and we are
         // creating a slice from a pointer to the start of the structure.
         unsafe { core::slice::from_raw_parts(binary_ptr, size_of::<Self>()) }
