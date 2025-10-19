@@ -298,6 +298,7 @@ impl FromStr for DomainAndName {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
+#[allow(clippy::expect_used, reason = "Unwrap is not an issue in test")]
 mod tests {
     use super::*;
     use proptest::prelude::*;
