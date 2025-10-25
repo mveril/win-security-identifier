@@ -169,8 +169,8 @@ jobs:
 
           # outputs (single-line JSON)
           $"TARGET_BARE=($TARGET_BARE)" | save --append $env.GITHUB_OUTPUT
-          $"PKG_LIST=($pkgs | to json -c)" | save --append $env.GITHUB_OUTPUT
-          $"CORE_MATRIX=($core_matrix | to json -c)" | save --append $env.GITHUB_OUTPUT
+          $"PKG_LIST=($pkgs | to json --raw)" | save --append $env.GITHUB_OUTPUT
+          $"CORE_MATRIX=($core_matrix | to json --raw)" | save --append $env.GITHUB_OUTPUT
 
       # --------------------------
       # Step: detect-alloc (Nu)
@@ -203,7 +203,7 @@ jobs:
             } | compact
           )
 
-          $"ALLOC_MATRIX=($alloc_matrix | to json -c)" | save --append $env.GITHUB_OUTPUT
+          $"ALLOC_MATRIX=($alloc_matrix | to json --raw)" | save --append $env.GITHUB_OUTPUT
 
       # --------------------------
       # Build: no_std (Nu) — check + build pour core & alloc
