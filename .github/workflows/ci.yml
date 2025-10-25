@@ -158,9 +158,9 @@ jobs:
           print $"core_matrix size: ($core_matrix | length)"
 
           # --- Outputs encodés base64 (clé en snake_case) ---
-          $"target_bare=($target_bare)" | save --append $env.GITHUB_OUTPUT
-          $"pkg_list_b64=($pkgs | to json --raw | encode base64)" | save --append $env.GITHUB_OUTPUT
-          $"core_matrix_b64=($core_matrix | to json --raw | encode base64)" | save --append $env.GITHUB_OUTPUT
+          $"target_bare=($target_bare)" | save --append --raw $env.GITHUB_OUTPUT
+          $"pkg_list_b64=($pkgs | to json --raw | encode base64)" | save --append --raw $env.GITHUB_OUTPUT
+          $"core_matrix_b64=($core_matrix | to json --raw | encode base64)" | save --append --raw $env.GITHUB_OUTPUT
           
 
       # --------------------------
@@ -191,7 +191,7 @@ jobs:
           }
           
           print $"alloc_matrix size: ($alloc_matrix | length)"
-          $"alloc_matrix_b64=($alloc_matrix | to json --raw | encode base64)" | save --append $env.GITHUB_OUTPUT
+          $"alloc_matrix_b64=($alloc_matrix | to json --raw | encode base64)" | save --append --raw $env.GITHUB_OUTPUT
 
 
       # --------------------------
