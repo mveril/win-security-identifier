@@ -109,7 +109,13 @@ jobs:
             rustup update stable
             cargo install nu
           fi
-          nu -c '$nu.version'
+      
+      - name: Verify Nushell
+        shell: nu {0}
+        run: |
+          # prints the version and exits 0
+          version
+
 
       - name: Toolchain + no_std target
         run: |
