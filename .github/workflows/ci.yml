@@ -197,7 +197,7 @@ jobs:
           print "CORE_MATRIX:"
           open ($base | path join 'core_matrix.json') | table
           print "ALLOC_MATRIX:"
-          if (path exists ($base | path join 'alloc_matrix.json')) {
+          if ($base | path join 'alloc_matrix.json' | path exists) {
             open ($base | path join 'alloc_matrix.json') | table
           } else {
             [] | table
@@ -212,7 +212,7 @@ jobs:
           let base = ($env.RUNNER_TEMP | path join 'ci')
           let TARGET = (open ($base | path join 'target_bare.txt') | decode utf-8 | str trim)
           let core = (open ($base | path join 'core_matrix.json'))
-          let alloc = (if (path exists ($base | path join 'alloc_matrix.json')) { open ($base | path join 'alloc_matrix.json') } else { [] })
+          let alloc = (if ($base | path join 'alloc_matrix.json' | path exists) { open ($base | path join 'alloc_matrix.json') } else { [] })
           let final = ($core | append $alloc)
 
           if ($final | is-empty) {
@@ -236,7 +236,7 @@ jobs:
           let base = ($env.RUNNER_TEMP | path join 'ci')
           let TARGET = (open ($base | path join 'target_bare.txt') | decode utf-8 | str trim)
           let core = (open ($base | path join 'core_matrix.json'))
-          let alloc = (if (path exists ($base | path join 'alloc_matrix.json')) { open ($base | path join 'alloc_matrix.json') } else { [] })
+          let alloc = (if ($base | path join 'alloc_matrix.json' | path exists) { open ($base | path join 'alloc_matrix.json') } else { [] })
           let final = ($core | append $alloc)
 
           for row in $final {
