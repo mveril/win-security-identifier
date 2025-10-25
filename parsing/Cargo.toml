@@ -10,7 +10,7 @@ keywords = ["windows", "sid", "security-identifier", "acl", "sddl"]
 categories = ["os::windows-apis", "parser-implementations", "data-structures"]
 
 [dependencies]
-arrayvec = { workspace = true, default-features = false }
+arrayvec = { workspace = true }
 thiserror = { workspace = true }
 
 [lints]

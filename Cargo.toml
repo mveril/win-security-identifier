@@ -8,7 +8,7 @@ package.edition = "2024"
 package.repository = "https://github.com/mveril/win-security-identifier"
 
 [workspace.dependencies]
-arrayvec = "0.7"
+arrayvec = {version = "0.7", default-features = false}
 thiserror = "2"
 parsing = { path = "parsing", package = "win-security-identifier-parsing" }
 sid_macro = { path = "macro", package = "win-security-identifier-macro" }
@@ -43,7 +43,7 @@ delegate = "0.13"
 serde = { version = "1", optional = true }
 parsing = { workspace = true }
 thiserror = { workspace = true }
-arrayvec = { workspace = true, optional = true, default-features = false }
+arrayvec = { workspace = true, optional = true }
 num_enum = "0.7"
 sid_macro = { workspace = true, optional = true }
 

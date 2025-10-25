@@ -1,3 +1,4 @@
+#![no_std]
 use core::fmt::{self, Display};
 use core::str::FromStr;
 
