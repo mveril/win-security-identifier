@@ -43,7 +43,7 @@ delegate = "0.13"
 serde = { version = "1", optional = true }
 parsing = { workspace = true }
 thiserror = { workspace = true }
-arrayvec = { workspace = true, optional = true }
+arrayvec = { workspace = true, optional = true, default-features = false }
 num_enum = "0.7"
 sid_macro = { workspace = true, optional = true }
 
