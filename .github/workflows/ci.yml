@@ -176,7 +176,7 @@ jobs:
           
           let pkgs = (
             if ($env.PKG_LIST_B64? | default "" | is-empty) { [] }
-            else { $env.PKG_LIST_B64 | decode base64 | from json }
+            else { $env.PKG_LIST_B64 | decode base64 | decode | from json }
           )
           
           mut alloc_matrix = []
@@ -206,10 +206,10 @@ jobs:
         run: |
           print "CORE_MATRIX:"
           if ($env.CORE_MATRIX_B64? | default "" | is-empty) { print "(empty)" }
-          else { ($env.CORE_MATRIX_B64 | decode base64 | from json) | table }
+          else { ($env.CORE_MATRIX_B64 | decode base64 | decode | from json) | table }
           print "ALLOC_MATRIX:"
           if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { print "(empty)" }
-          else { ($env.ALLOC_MATRIX_B64 | decode base64 | from json) | table }
+          else { ($env.ALLOC_MATRIX_B64 | decode base64 | decode | from json) | table }
 
 
       # --------------------------
@@ -223,8 +223,8 @@ jobs:
           ALLOC_MATRIX_B64:  ${{ steps.detect_alloc.outputs.alloc_matrix_b64 }}
         run: |
           let TARGET = $env.TARGET_BARE
-          let core   = (if ($env.CORE_MATRIX_B64?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX_B64  | decode base64 | from json })
-          let alloc  = (if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX_B64 | decode base64 | from json })
+          let core   = (if ($env.CORE_MATRIX_B64?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX_B64  | decode base64 | decode | from json })
+          let alloc  = (if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX_B64 | decode base64 | decode | from json })
           let final  = ($core | append $alloc)
         
           if ($final | is-empty) { print "No no_std rows. Failing for visibility."; exit 1 }
@@ -244,8 +244,8 @@ jobs:
           ALLOC_MATRIX_B64:  ${{ steps.detect_alloc.outputs.alloc_matrix_b64 }}
         run: |
           let TARGET = $env.TARGET_BARE
-          let core   = (if ($env.CORE_MATRIX_B64?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX_B64  | decode base64 | from json })
-          let alloc  = (if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX_B64 | decode base64 | from json })
+          let core   = (if ($env.CORE_MATRIX_B64?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX_B64  | decode base64 | decode | from json })
+          let alloc  = (if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX_B64 | decode base64 | decode | from json })
           let final  = ($core | append $alloc)
         
           for row in $final {
