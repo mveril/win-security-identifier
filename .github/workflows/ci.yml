@@ -161,7 +161,38 @@ jobs:
           $"target_bare=($target_bare)" | save --append --raw $env.GITHUB_OUTPUT
           $"pkg_list_b64=($pkgs | to json --raw | encode base64)" | save --append --raw $env.GITHUB_OUTPUT
           $"core_matrix_b64=($core_matrix | to json --raw | encode base64)" | save --append --raw $env.GITHUB_OUTPUT
-          
+       
+      - name: Debug Base64 outputs (Bash)
+        if: always()
+        shell: bash
+        run: |
+          echo "--- DEBUG BASE64 VALUES ---"
+                
+          if [ -z "${{ steps.detect_nostd.outputs.pkg_list_b64 }}" ]; then
+            echo "PKG_LIST_B64: (empty)"
+          else
+            echo "PKG_LIST_B64 (first 120 chars):"
+            echo "${{ steps.detect_nostd.outputs.pkg_list_b64 }}" | head -c 120
+            echo
+          fi
+                
+          if [ -z "${{ steps.detect_nostd.outputs.core_matrix_b64 }}" ]; then
+            echo "CORE_MATRIX_B64: (empty)"
+          else
+            echo "CORE_MATRIX_B64 (first 120 chars):"
+            echo "${{ steps.detect_nostd.outputs.core_matrix_b64 }}" | head -c 120
+            echo
+          fi
+                
+          if [ -z "${{ steps.detect_alloc.outputs.alloc_matrix_b64 }}" ]; then
+            echo "ALLOC_MATRIX_B64: (empty)"
+          else
+            echo "ALLOC_MATRIX_B64 (first 120 chars):"
+            echo "${{ steps.detect_alloc.outputs.alloc_matrix_b64 }}" | head -c 120
+            echo
+          fi
+                
+          echo "--- END DEBUG ---"
 
       # --------------------------
       # detect-alloc (Nu) → single-line outputs
