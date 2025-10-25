@@ -65,7 +65,6 @@ jobs:
           rustc -Vv
           cargo -V
 
-      # Security audit on ubuntu + nightly (std-only)
       - name: Install cargo-audit (ubuntu-nightly only)
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
         run: |
@@ -100,7 +99,7 @@ jobs:
 
 
   # ============================================================
-  # 2) no_std job: detect (Nu) + compile (core & alloc) in pure Nushell
+  # 2) no_std job: detect (Nu) + compile (core & alloc) with solid outputs
   # ============================================================
   no-std:
     name: no_std (Nu detect core/alloc → build)
@@ -110,23 +109,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Nushell (prefer snap; fallback cargo)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          if command -v nu >/dev/null 2>&1; then
-            nu -v || true
-            exit 0
-          fi
-          if command -v snap >/dev/null 2>&1; then
-            sudo snap install nushell --classic || true
-          fi
-          if ! command -v nu >/dev/null 2>&1; then
-            rustup set profile minimal
-            rustup update stable
-            cargo install nu
-          fi
-          nu -v || true
+      # Pin Nushell version for reproducibility
+      - name: Setup Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: '0.108.0'
 
       - name: Toolchain + no_std target
         shell: bash
@@ -137,8 +124,8 @@ jobs:
           rustup default stable
           rustup target add x86_64-unknown-none
 
-            # --------------------------
-      # Step: detect-nostd (Nu) → outputs via heredoc (lowercase keys)
+      # --------------------------
+      # detect-nostd (Nu) → single-line outputs
       # --------------------------
       - name: detect-nostd (Nu)
         id: detect_nostd
@@ -149,7 +136,7 @@ jobs:
           let members  = $meta.workspace_members
           let lib_kinds = [lib rlib staticlib cdylib dylib]
 
-          # collect lib packages from workspace
+          # collect lib packages
           let pkgs = (
             $meta.packages
             | where {|p| $members | any {|m| $m == $p.id } }
@@ -171,22 +158,18 @@ jobs:
             $core_matrix  = ($core_matrix | append { pkg: $name, args: $args })
           }
 
-          # human log
+          # human logs
           print "== no_std candidates (lib targets) =="
           ($pkgs | each {|n| print $"- ($n)"} | ignore)
           print $"core_matrix size: ($core_matrix | length)"
 
-          # outputs (official multiline → heredoc) — names are lowercase!
-          $"target_bare=($target_bare)" | save --append $env.GITHUB_OUTPUT
-          $"pkg_list<<EOF"              | save --append $env.GITHUB_OUTPUT
-          ($pkgs | to json)            | save --append $env.GITHUB_OUTPUT
-          "EOF"                         | save --append $env.GITHUB_OUTPUT
-          $"core_matrix<<EOF"          | save --append $env.GITHUB_OUTPUT
-          ($core_matrix | to json)     | save --append $env.GITHUB_OUTPUT
-          "EOF"                         | save --append $env.GITHUB_OUTPUT
+          # outputs — single line (NO spaces around '='; lowercase keys)
+          $"target_bare=($target_bare)"                  | save --append $env.GITHUB_OUTPUT
+          $"pkg_list=($pkgs | to json --raw)"            | save --append $env.GITHUB_OUTPUT
+          $"core_matrix=($core_matrix | to json --raw)"  | save --append $env.GITHUB_OUTPUT
 
       # --------------------------
-      # Step: detect-alloc (Nu) → read heredoc output, write heredoc output
+      # detect-alloc (Nu) → single-line outputs
       # --------------------------
       - name: detect-alloc (Nu)
         id: detect_alloc
@@ -195,7 +178,7 @@ jobs:
           PKG_LIST: ${{ steps.detect_nostd.outputs.pkg_list }}
         run: |
           let meta = (cargo metadata --no-deps --format-version=1 | from json)
-          let pkgs = (($env.PKG_LIST? | default "[]") | from json)
+          let pkgs = (if ($env.PKG_LIST? | default "" | is-empty) { [] } else { $env.PKG_LIST | from json })
 
           mut alloc_matrix = []
           for name in $pkgs {
@@ -209,14 +192,10 @@ jobs:
           }
 
           print $"alloc_matrix size: ($alloc_matrix | length)"
-
-          # output via heredoc (lowercase key)
-          $"alloc_matrix<<EOF"         | save --append $env.GITHUB_OUTPUT
-          ($alloc_matrix | to json)    | save --append $env.GITHUB_OUTPUT
-          "EOF"                         | save --append $env.GITHUB_OUTPUT
+          $"alloc_matrix=($alloc_matrix | to json --raw)" | save --append $env.GITHUB_OUTPUT
 
       # --------------------------
-      # Optional: debug what we read back
+      # Debug (optional) — see what we'll consume
       # --------------------------
       - name: Debug matrices (Nu)
         if: always()
@@ -231,7 +210,7 @@ jobs:
           (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json }) | table
 
       # --------------------------
-      # Build: no_std (Nu) — read heredoc outputs, iterate
+      # Build: no_std (Nu) — read single-line outputs and iterate
       # --------------------------
       - name: Cargo check (no_std) [Nu]
         shell: nu {0}
@@ -240,12 +219,15 @@ jobs:
           CORE_MATRIX:  ${{ steps.detect_nostd.outputs.core_matrix }}
           ALLOC_MATRIX: ${{ steps.detect_alloc.outputs.alloc_matrix }}
         run: |
-          let TARGET = ($env.TARGET_BARE)
-          let core   = (if ($env.CORE_MATRIX?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX  | from json })
-          let alloc  = (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json })
-          let final  = ($core | append $alloc)
+          let TARGET    = $env.TARGET_BARE
+          let core      = (if ($env.CORE_MATRIX?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX  | from json })
+          let alloc     = (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json })
+          let final     = ($core | append $alloc)
 
-          if ($final | is-empty) { print "No no_std rows. Failing for visibility."; exit 1 }
+          if ($final | is-empty) {
+            print "No no_std rows. Failing for visibility."
+            exit 1
+          }
 
           for row in $final {
             let pkg  = $row.pkg
@@ -261,14 +243,13 @@ jobs:
           CORE_MATRIX:  ${{ steps.detect_nostd.outputs.core_matrix }}
           ALLOC_MATRIX: ${{ steps.detect_alloc.outputs.alloc_matrix }}
         run: |
-          let TARGET = ($env.TARGET_BARE)
-          let core = (if ($env.CORE_MATRIX?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX  | from json })
-          let alloc = (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json })
-          let final = ($core | append $alloc)
+          let TARGET    = $env.TARGET_BARE
+          let core      = (if ($env.CORE_MATRIX?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX  | from json })
+          let alloc     = (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json })
+          let final     = ($core | append $alloc)
 
           for row in $final {
             let pkg  = $row.pkg
             let args = ($row.args | split row ' ')
             print $">> build: ($pkg) @ ($TARGET)"
             ^cargo build -p $pkg --release --target $TARGET ...$args
-          }
