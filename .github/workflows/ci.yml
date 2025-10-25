@@ -192,9 +192,9 @@ jobs:
           )
 
           # Outputs (compact, one line)
-          $"TARGET_BARE=($TARGET_BARE)"                   | save --append $env.GITHUB_OUTPUT
-          $"PKG_LIST=($pkgs | to json --raw)"            | save --append $env.GITHUB_OUTPUT
-          $"CORE_MATRIX=($core_matrix | to json --raw)"  | save --append $env.GITHUB_OUTPUT
+          $"TARGET_BARE=($TARGET_BARE)"                   | save --append --raw $env.GITHUB_OUTPUT
+          $"PKG_LIST=($pkgs | to json --raw)"            | save --append --raw $env.GITHUB_OUTPUT
+          $"CORE_MATRIX=($core_matrix | to json --raw)"  | save --append --raw $env.GITHUB_OUTPUT
 
       # --------------------------
       # Step: detect-alloc (Nu)
@@ -211,7 +211,7 @@ jobs:
           let pkgs  = (($env.PKG_LIST? | default "[]") | from json)
         
           if ($pkgs | is-empty) {
-            $"ALLOC_MATRIX=[]" | save --append $env.GITHUB_OUTPUT
+            $"ALLOC_MATRIX=[]" | save --append --raw $env.GITHUB_OUTPUT
             exit 0
           }
         
@@ -238,7 +238,7 @@ jobs:
             | compact
           )
         
-          $"ALLOC_MATRIX=($alloc_matrix | to json --raw)" | save --append $env.GITHUB_OUTPUT
+          $"ALLOC_MATRIX=($alloc_matrix | to json --raw)" | save --append --raw $env.GITHUB_OUTPUT
 
       # --------------------------
       # Optional: debug matrices (useful if something looks empty)
