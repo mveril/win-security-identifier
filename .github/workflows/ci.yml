@@ -92,113 +92,155 @@ jobs:
 
 
   # ============================================================
-  # 2) no_std job: auto-detect + build (core & alloc)
+  # 2) no_std job: detection (Nushell) + compile (core & alloc)
   # ============================================================
   no-std:
-    name: no_std (auto-detect core/alloc)
+    name: no_std (Nu detect core/alloc → build)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Toolchain + target
+      - name: Install Nushell (apt → snap → cargo fallback)
+        run: |
+          set -e
+          if command -v nu >/dev/null 2>&1; then exit 0; fi
+          if sudo apt-get update -y && sudo apt-get install -y nushell; then exit 0; fi
+          if command -v snap >/dev/null 2>&1; then
+            sudo snap install nushell --classic || true
+          fi
+          if ! command -v nu >/dev/null 2>&1; then
+            rustup set profile minimal
+            rustup update stable
+            cargo install nu
+          fi
+          nu -c '$nu.version'
+
+      - name: Toolchain + targets
         run: |
           rustup set profile minimal
           rustup update stable
           rustup default stable
+          # Bare-metal no_std target for compile-only checks
           rustup target add x86_64-unknown-none
 
-      - name: Ensure jq
-        run: |
-          if ! command v jq >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -y && sudo apt-get install -y jq
-            fi
-          fi
-          jq --version || true
-
       # --------------------------
-      # Step: detect-nostd
+      # Step: detect-nostd (Nushell)
       # - Find workspace lib packages
-      # - For each, build CORE args:
-      #     --no-default-features [--features feat1,feat2,...]
-      #   where features = all non-std/non-alloc features
-      # Outputs:
-      #   TARGET         -> no_std target triple
-      #   CORE_MATRIX    -> JSON [{pkg, args}]
-      #   PKG_LIST       -> JSON ["pkg1","pkg2",...]
+      # - Build CORE args per package:
+      #     --no-default-features [--features feat1,feat2,...] (all non-std/non-alloc)
+      # Outputs (compact JSON):
+      #   TARGET_BARE     -> "x86_64-unknown-none"
+      #   CORE_MATRIX     -> [{"pkg":"name","args":"..."}]
+      #   PKG_LIST        -> ["pkg1","pkg2",...]
       # --------------------------
-      - name: detect-nostd (core variants)
+      - name: detect-nostd (Nu)
         id: detect-nostd
         shell: bash
         run: |
           set -euo pipefail
-          TARGET="x86_64-unknown-none"
-          META=$(cargo metadata --no-deps --format-version=1)
+          nu -c '
+            # --- read cargo metadata as structured data ---
+            let meta = (cargo metadata --no-deps --format-version=1 | from json)
 
-          # Compact JSON array of package names: ["pkg1","pkg2",...]
-          PKG_LIST=$(echo "${META}" | jq -cr '
-            .workspace_members[] as $id
-            | .packages[] | select(.id == $id)
-            | select(.targets[].kind[]? | contains("lib"))
-            | .name
-          ' | sort -u | jq -R . | jq -cs .)
+            # --- select workspace members that have at least one lib target ---
+            let pkgs = ($meta.packages
+              | where {|p| $meta.workspace_members | any {|id| $id == $p.id } }
+              | where {|p| $p.targets | any {|t| $t.kind | any {|k| $k == "lib"} } }
+              | get name
+              | uniq
+            )
 
-          echo "== lib packages =="
-          echo "${PKG_LIST}" | jq -r '.[]'
+            # --- build core args per package (all non-std/non-alloc features) ---
+            let core_matrix = ($pkgs | each {|name|
+              let feats = ($meta.packages
+                | where name == $name
+                | get 0
+                | get features
+                | columns
+                | where {|f| $f != "default" and $f != "std" and $f != "alloc"}
+                | str join ","
+              )
+              let args = if ($feats | is-empty) { "--no-default-features" } else { $"--no-default-features --features ($feats)" }
+              { pkg: $name, args: $args }
+            })
 
-          # Build compact core matrix: [{"pkg":"...","args":"..."}]
-          CORE_MATRIX=$(echo "${PKG_LIST}" | jq -c '[ .[] | {pkg:., args:"--no-default-features"} ]')
-
-          {
-            echo "TARGET=${TARGET}"
-            echo "PKG_LIST=${PKG_LIST}"
-            echo "CORE_MATRIX=${CORE_MATRIX}"
-          } >> "$GITHUB_OUTPUT"
+            # --- outputs (compact JSON, single-line) ---
+            $"TARGET_BARE=x86_64-unknown-none" | save --append $env.GITHUB_OUTPUT
+            $"PKG_LIST=($pkgs | to json -c)"     | save --append $env.GITHUB_OUTPUT
+            $"CORE_MATRIX=($core_matrix | to json -c)" | save --append $env.GITHUB_OUTPUT
+          '
 
       # --------------------------
-      # Step: detect-alloc
+      # Step: detect-alloc (Nushell)
       # - For packages that have an "alloc" feature, build ALLOC args:
       #     --no-default-features --features alloc[,feat1,feat2,...non-std/non-alloc]
-      # Outputs:
-      #   ALLOC_MATRIX   -> JSON [{pkg, args}]
+      # Output:
+      #   ALLOC_MATRIX   -> [{"pkg":"name","args":"..."}]
       # --------------------------
-      - name: detect-alloc (alloc variants)
+      - name: detect-alloc (Nu)
         id: detect-alloc
         shell: bash
         run: |
           set -euo pipefail
-          META=$(cargo metadata --no-deps --format-version=1)
-          PKG_LIST='${{ steps.detect-nostd.outputs.PKG_LIST }}'
+          nu -c '
+            let meta = (cargo metadata --no-deps --format-version=1 | from json)
+            let pkgs = ($env.PKG_LIST | from json)  # from previous step outputs
 
-          # Start with empty compact array
-          ALLOC_MATRIX='[]'
-          
-          for PKG in $(echo "${PKG_LIST}" | jq -r '.[]'); do
-            HAS_ALLOC=$(echo "${META}" | jq -r --arg P "$PKG" '
-              .packages[] | select(.name == $P) | (.features | has("alloc")) // false
-            ')
-            [ "${HAS_ALLOC}" != "true" ] && continue
+            let alloc_matrix = ($pkgs | each {|name|
+              let feats_cols = ($meta.packages | where name == $name | get 0 | get features | columns)
+              if ($feats_cols | any {|f| $f == "alloc"}) {
+                let extra = ($feats_cols
+                  | where {|f| $f != "default" and $f != "std" and $f != "alloc"}
+                  | str join ","
+                )
+                let args = if ($extra | is-empty) {
+                  "--no-default-features --features alloc"
+                } else {
+                  $"--no-default-features --features alloc,($extra)"
+                }
+                { pkg: $name, args: $args }
+              }
+            } | compact)
 
-            FEATS=$(echo "${META}" | jq -r --arg P "$PKG" '
-              .packages[] | select(.name == $P) | (.features | keys)
-              | map(select(. != "default" and . != "std" and . != "alloc"))
-              | join(",")
-            ')
-            if [ -n "${FEATS}" ]; then
-              ARGS="--no-default-features --features alloc,${FEATS}"
-            else
-              ARGS="--no-default-features --features alloc"
-            fi
+            $"ALLOC_MATRIX=($alloc_matrix | to json -c)" | save --append $env.GITHUB_OUTPUT
+          '
 
-            # Append compactly
-            ALLOC_MATRIX=$(jq -c --argjson arr "${ALLOC_MATRIX}" --arg P "${PKG}" --arg A "${ARGS}" \
-              '$arr + [{"pkg":$P,"args":$A}]')
+      # --------------------------
+      # Build: no_std (core + alloc) using Bash (reads compact JSON outputs)
+      # --------------------------
+      - name: Cargo check (no_std)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='${{ steps.detect-nostd.outputs.TARGET_BARE }}'
+          FINAL=$(jq -cn \
+            --argjson core '${{ steps.detect-nostd.outputs.CORE_MATRIX }}' \
+            --argjson alloc '${{ steps.detect-alloc.outputs.ALLOC_MATRIX || "[]" }}' \
+            '$core + $alloc')
+          echo "${FINAL}" | jq -c '.[]' | while read -r row; do
+            PKG=$(echo "$row"  | jq -r '.pkg')
+            ARGS=$(echo "$row" | jq -r '.args')
+            echo ">> check: ${PKG} @ ${TARGET} (${ARGS})"
+            cargo check -p "${PKG}" --target "${TARGET}" ${ARGS}
           done
 
-          echo "ALLOC_MATRIX=${ALLOC_MATRIX}" >> "$GITHUB_OUTPUT"
-
+      - name: Cargo build (no_std, release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='${{ steps.detect-nostd.outputs.TARGET_BARE }}'
+          FINAL=$(jq -cn \
+            --argjson core '${{ steps.detect-nostd.outputs.CORE_MATRIX }}' \
+            --argjson alloc '${{ steps.detect-alloc.outputs.ALLOC_MATRIX || "[]" }}' \
+            '$core + $alloc')
+          echo "${FINAL}" | jq -c '.[]' | while read -r row; do
+            PKG=$(echo "$row"  | jq -r '.pkg')
+            ARGS=$(echo "$row" | jq -r '.args')
+            echo ">> build: ${PKG} @ ${TARGET} (${ARGS})"
+            cargo build -p "${PKG}" --release --target "${TARGET}" ${ARGS}
+          done
 
       # --------------------------
       # Build: no_std (core + alloc)
