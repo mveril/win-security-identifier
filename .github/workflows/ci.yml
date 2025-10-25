@@ -136,19 +136,14 @@ jobs:
           let members  = $meta.workspace_members
           let lib_kinds = [lib rlib staticlib cdylib dylib]
 
-          # collect lib packages
           let pkgs = (
             $meta.packages
             | where {|p| $members | any {|m| $m == $p.id } }
-            | where {|p|
-                $p.targets
-                | any {|t| ($t.kind? | default []) | any {|k| $lib_kinds | any {|lk| $lk == $k } } }
-              }
+            | where {|p| $p.targets | any {|t| ($t.kind? | default []) | any {|k| $lib_kinds | any {|lk| $lk == $k } } } }
             | get name
             | uniq
           )
 
-          # build core_matrix (tolerate missing [features])
           mut core_matrix = []
           for name in $pkgs {
             let pkg       = ($meta.packages | where name == $name | first)
@@ -158,15 +153,15 @@ jobs:
             $core_matrix  = ($core_matrix | append { pkg: $name, args: $args })
           }
 
-          # human logs
           print "== no_std candidates (lib targets) =="
           ($pkgs | each {|n| print $"- ($n)"} | ignore)
           print $"core_matrix size: ($core_matrix | length)"
 
-          # outputs — single line (NO spaces around '='; lowercase keys)
-          $"target_bare=($target_bare)"                  | save --append $env.GITHUB_OUTPUT
-          $"pkg_list=($pkgs | to json --raw)"            | save --append $env.GITHUB_OUTPUT
-          $"core_matrix=($core_matrix | to json --raw)"  | save --append $env.GITHUB_OUTPUT
+          # --- Outputs encodés base64 (clé en snake_case) ---
+          $"target_bare=($target_bare)" | save --append $env.GITHUB_OUTPUT
+          $"pkg_list_b64=($pkgs | to json --raw | encode base64)" | save --append $env.GITHUB_OUTPUT
+          $"core_matrix_b64=($core_matrix | to json --raw | encode base64)" | save --append $env.GITHUB_OUTPUT
+          
 
       # --------------------------
       # detect-alloc (Nu) → single-line outputs
@@ -175,11 +170,15 @@ jobs:
         id: detect_alloc
         shell: nu {0}
         env:
-          PKG_LIST: ${{ steps.detect_nostd.outputs.pkg_list }}
+          PKG_LIST_B64: ${{ steps.detect_nostd.outputs.pkg_list_b64 }}
         run: |
           let meta = (cargo metadata --no-deps --format-version=1 | from json)
-          let pkgs = (if ($env.PKG_LIST? | default "" | is-empty) { [] } else { $env.PKG_LIST | from json })
-
+          
+          let pkgs = (
+            if ($env.PKG_LIST_B64? | default "" | is-empty) { [] }
+            else { $env.PKG_LIST_B64 | decode base64 | from json }
+          )
+          
           mut alloc_matrix = []
           for name in $pkgs {
             let pkg       = ($meta.packages | where name == $name | first)
@@ -190,9 +189,10 @@ jobs:
               $alloc_matrix = ($alloc_matrix | append { pkg: $name, args: $args })
             }
           }
-
+          
           print $"alloc_matrix size: ($alloc_matrix | length)"
-          $"alloc_matrix=($alloc_matrix | to json --raw)" | save --append $env.GITHUB_OUTPUT
+          $"alloc_matrix_b64=($alloc_matrix | to json --raw | encode base64)" | save --append $env.GITHUB_OUTPUT
+
 
       # --------------------------
       # Debug (optional) — see what we'll consume
@@ -201,13 +201,16 @@ jobs:
         if: always()
         shell: nu {0}
         env:
-          CORE_MATRIX:  ${{ steps.detect_nostd.outputs.core_matrix }}
-          ALLOC_MATRIX: ${{ steps.detect_alloc.outputs.alloc_matrix }}
+          CORE_MATRIX_B64:  ${{ steps.detect_nostd.outputs.core_matrix_b64 }}
+          ALLOC_MATRIX_B64: ${{ steps.detect_alloc.outputs.alloc_matrix_b64 }}
         run: |
-          print "CORE_MATRIX parsed:"
-          (if ($env.CORE_MATRIX? | default "" | is-empty) { [] } else { $env.CORE_MATRIX | from json }) | table
-          print "ALLOC_MATRIX parsed:"
-          (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json }) | table
+          print "CORE_MATRIX:"
+          if ($env.CORE_MATRIX_B64? | default "" | is-empty) { print "(empty)" }
+          else { ($env.CORE_MATRIX_B64 | decode base64 | from json) | table }
+          print "ALLOC_MATRIX:"
+          if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { print "(empty)" }
+          else { ($env.ALLOC_MATRIX_B64 | decode base64 | from json) | table }
+
 
       # --------------------------
       # Build: no_std (Nu) — read single-line outputs and iterate
@@ -215,41 +218,40 @@ jobs:
       - name: Cargo check (no_std) [Nu]
         shell: nu {0}
         env:
-          TARGET_BARE:  ${{ steps.detect_nostd.outputs.target_bare }}
-          CORE_MATRIX:  ${{ steps.detect_nostd.outputs.core_matrix }}
-          ALLOC_MATRIX: ${{ steps.detect_alloc.outputs.alloc_matrix }}
+          TARGET_BARE:       ${{ steps.detect_nostd.outputs.target_bare }}
+          CORE_MATRIX_B64:   ${{ steps.detect_nostd.outputs.core_matrix_b64 }}
+          ALLOC_MATRIX_B64:  ${{ steps.detect_alloc.outputs.alloc_matrix_b64 }}
         run: |
-          let TARGET    = $env.TARGET_BARE
-          let core      = (if ($env.CORE_MATRIX?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX  | from json })
-          let alloc     = (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json })
-          let final     = ($core | append $alloc)
-
-          if ($final | is-empty) {
-            print "No no_std rows. Failing for visibility."
-            exit 1
-          }
-
+          let TARGET = $env.TARGET_BARE
+          let core   = (if ($env.CORE_MATRIX_B64?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX_B64  | decode base64 | from json })
+          let alloc  = (if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX_B64 | decode base64 | from json })
+          let final  = ($core | append $alloc)
+        
+          if ($final | is-empty) { print "No no_std rows. Failing for visibility."; exit 1 }
+        
           for row in $final {
             let pkg  = $row.pkg
             let args = ($row.args | split row ' ')
             print $">> check: ($pkg) @ ($TARGET)"
             ^cargo check -p $pkg --target $TARGET ...$args
           }
-
+        
       - name: Cargo build (no_std, release) [Nu]
         shell: nu {0}
         env:
-          TARGET_BARE:  ${{ steps.detect_nostd.outputs.target_bare }}
-          CORE_MATRIX:  ${{ steps.detect_nostd.outputs.core_matrix }}
-          ALLOC_MATRIX: ${{ steps.detect_alloc.outputs.alloc_matrix }}
+          TARGET_BARE:       ${{ steps.detect_nostd.outputs.target_bare }}
+          CORE_MATRIX_B64:   ${{ steps.detect_nostd.outputs.core_matrix_b64 }}
+          ALLOC_MATRIX_B64:  ${{ steps.detect_alloc.outputs.alloc_matrix_b64 }}
         run: |
-          let TARGET    = $env.TARGET_BARE
-          let core      = (if ($env.CORE_MATRIX?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX  | from json })
-          let alloc     = (if ($env.ALLOC_MATRIX? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX | from json })
-          let final     = ($core | append $alloc)
-
+          let TARGET = $env.TARGET_BARE
+          let core   = (if ($env.CORE_MATRIX_B64?  | default "" | is-empty) { [] } else { $env.CORE_MATRIX_B64  | decode base64 | from json })
+          let alloc  = (if ($env.ALLOC_MATRIX_B64? | default "" | is-empty) { [] } else { $env.ALLOC_MATRIX_B64 | decode base64 | from json })
+          let final  = ($core | append $alloc)
+        
           for row in $final {
             let pkg  = $row.pkg
             let args = ($row.args | split row ' ')
             print $">> build: ($pkg) @ ($TARGET)"
             ^cargo build -p $pkg --release --target $TARGET ...$args
+          }
+        
