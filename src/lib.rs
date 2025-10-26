@@ -111,7 +111,7 @@ mod sid;
 
 #[cfg(feature = "alloc")]
 pub use security_identifier::SecurityIdentifier;
-#[cfg(all(windows, feature = "alloc"))]
+#[cfg(all(windows, feature = "std"))]
 pub use security_identifier::TokenError;
 pub use sid::Sid;
 
