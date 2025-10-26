@@ -104,7 +104,13 @@ jobs:
   no-std:
     name: no_std (Nu detect core/alloc → build)
     runs-on: ubuntu-latest
-
+  
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
+      CARGO_INCREMENTAL: 0
+      
     steps:
       - name: Checkout
         uses: actions/checkout@v4
