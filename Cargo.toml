@@ -9,7 +9,7 @@ package.repository = "https://github.com/mveril/win-security-identifier"
 
 [workspace.dependencies]
 arrayvec = {version = "0.7", default-features = false}
-thiserror = "2"
+thiserror = {version = "2", default-features = false}
 parsing = { path = "parsing", package = "win-security-identifier-parsing" }
 sid_macro = { path = "macro", package = "win-security-identifier-macro" }
 
@@ -32,7 +32,7 @@ repository.workspace = true
 
 [features]
 default = ["std"]
-std = ["alloc", "dep:smallvec", "serde?/std", "num_enum/std"]
+std = ["alloc", "dep:smallvec", "serde?/std", "num_enum/std", "thiserror/std"]
 alloc = ["serde?/alloc"]
 macro = ["dep:sid_macro"]
 serde = ["dep:serde", "dep:arrayvec"]
