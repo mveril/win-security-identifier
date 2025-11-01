@@ -99,7 +99,7 @@ jobs:
         uses: Swatinem/rust-cache@v4
 
       - name: Install Nushell
-        uses: hustcer/setup-nu
+        uses: hustcer/setup-nu@v3
         with:
           version: '0.108.0'
 
