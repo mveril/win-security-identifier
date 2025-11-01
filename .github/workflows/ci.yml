@@ -82,7 +82,8 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --all-features --all-targets -- --nocapture
 
-      - name: Build docs{{ matrix.docsrs && ' with docs.rs config' || '' }}
+      - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
+        if: ${{ runner.os == 'windows-latest' }}
         run: cargo doc --workspace --all-features --no-deps
 
   no-std:
@@ -147,14 +148,27 @@ jobs:
 
           echo "== ALLOC_MATRIX =="
           printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | table"
-      - name: "no_std ${{ inputs.kind }}: Check + Build" 
-        uses: ./.github/actions/no_std/build-and-check-nostd
+
+      - name: "no_std ${{ inputs.kind }}: Check" 
+        uses: ./.github/actions/no_std/check-nostd
         with:
           kind: core
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
 
-      - name: "no_std ${{ inputs.kind }}: Check + Build" 
-        uses: ./.github/actions/no_std/build-and-check-nostd
+      - name: "no_std ${{ inputs.kind }}: build" 
+        uses: ./.github/actions/no_std/build-nostd
+        with:
+          kind: core
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std ${{ inputs.kind }}: Check" 
+        uses: ./.github/actions/no_std/check-nostd
+        with:
+          kind: core
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std ${{ inputs.kind }}: build" 
+        uses: ./.github/actions/no_std/build-nostd
         with:
           kind: alloc
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}

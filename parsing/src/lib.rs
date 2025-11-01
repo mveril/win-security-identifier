@@ -1,5 +1,5 @@
-#![allow(rustdoc::missing_crate_level_docs, reason = "Internal crate")]
 #![cfg_attr(not(feature = "std"), no_std)]
+//! SID parsing core functionality.
 use core::fmt::{self, Display};
 use core::str::FromStr;
 
