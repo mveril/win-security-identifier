@@ -137,13 +137,14 @@ jobs:
 
           echo "== ALLOC_MATRIX =="
           printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | table"
-          
-      - uses: ./.github/actions/no_std/build-and-check-nostd
+      - name: "no_std ${{ inputs.kind }}: Check + Build" 
+        uses: ./.github/actions/no_std/build-and-check-nostd
         with:
           kind: core
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
 
-      - uses: ./.github/actions/no_std/build-and-check-nostd
+      - name: "no_std ${{ inputs.kind }}: Check + Build" 
+        uses: ./.github/actions/no_std/build-and-check-nostd
         with:
           kind: alloc
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
