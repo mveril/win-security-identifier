@@ -1,3 +1,4 @@
+//! Procedural macro for compile-time Windows Security Identifier (SID) parsing.
 mod core;
 use core::sid_impl;
 use proc_macro::TokenStream;

@@ -13,12 +13,14 @@ mod token_error;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
 use ::core::alloc::Layout;
+#[cfg(feature = "std")]
+use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::ops::DerefMut;
 use core::str::FromStr;
 use core::{ops::Deref, ptr::NonNull};
 #[cfg(feature = "std")]
-use std::{alloc, borrow::Borrow, borrow::ToOwned};
+use std::{alloc, borrow::ToOwned};
 #[cfg(all(windows, feature = "std"))]
 pub use token_error::TokenError;
 
@@ -617,6 +619,7 @@ pub mod test {
     #[cfg(windows)]
     mod windows {
         use core::ptr;
+        use core::slice;
 
         use crate::SecurityIdentifier;
 
@@ -652,7 +655,7 @@ pub mod test {
                     }
 
                     let win_len = GetLengthSid(sid_ptr.cast());
-                    let win_bytes = std::slice::from_raw_parts(sid_ptr as *const u8, win_len as usize);
+                    let win_bytes = slice::from_raw_parts(sid_ptr as *const u8, win_len as usize);
 
                     let rust_bytes = sid.as_binary();
                     prop_assert_eq!(

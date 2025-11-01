@@ -338,7 +338,8 @@ mod test {
     #[cfg(feature = "std")]
     #[test]
     pub fn test_hash() {
-        use std::hash::{DefaultHasher, Hash, Hasher};
+        use core::hash::{Hash, Hasher};
+        use std::hash::DefaultHasher;
 
         use crate::well_known;
         let sid = well_known::LOCAL_SYSTEM;

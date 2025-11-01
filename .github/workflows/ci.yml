@@ -25,23 +25,30 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         toolchain: [stable, nightly]
+        docsrs: [false, true]
+        exclude:
+          - toolchain: stable
+            docsrs: true
+          - toolchain: nightly
+            docsrs: false
     env:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -D warnings
-      RUSTDOCFLAGS: -D warnings
       CARGO_INCREMENTAL: 0
-    
+      # '--cfg docsrs' only on nightly builds
+      RUSTDOCFLAGS: ${{ matrix.docsrs && '--cfg docsrs -D warnings' || '-D warnings' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-    
+
       - name: Install Rust toolchain (${{ matrix.toolchain }})
         run: |
           rustup set profile minimal
           rustup update ${{ matrix.toolchain }}
           rustup default ${{ matrix.toolchain }}
           rustup component add rustfmt clippy
-    
+
       - name: Cache cargo dependencies
         uses: actions/cache@v4
         with:
@@ -51,32 +58,36 @@ jobs:
             ~/.cargo/advisory-db
             target
           key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.toml') }}
-        
+
       - name: Show toolchain versions
         run: rustc -Vv && cargo -V
-        
+
       - name: Install cargo-audit (nightly Linux only)
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
         run: cargo install cargo-audit || echo "cargo-audit already installed"
-        
+
       - name: Run cargo audit (nightly Linux only)
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
         run: cargo audit
-        
+
       - name: Check formatting
         run: cargo fmt --all -- --check
-        
+
       - name: Run clippy (lint all targets)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-        
+
       - name: Build workspace
         run: cargo build --workspace --all-features
-        
+
       - name: Run tests
         run: cargo test --workspace --all-features --all-targets -- --nocapture
 
+      - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
+        if: ${{ runner.os == 'windows-latest' }}
+        run: cargo doc --workspace --all-features --no-deps
+
   no-std:
-    name: no_std (detect core/alloc → check+build) [bash + nu files via stdin/stdout]
+    name: no_std check and build
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -92,7 +103,6 @@ jobs:
         run: |
           rustup set profile minimal
           rustup update stable
-          rustup component add rustfmt clippy
           rustup target add ${TARGET}
 
       - name: Cache cargo dependencies
@@ -110,7 +120,7 @@ jobs:
         with:
           version: '0.108.0'
 
-      - name: Detect no_std matrices (Bash → Nu via stdin/stdout → single output)
+      - name: Detect no_std matrices
         id: detect
         shell: bash
         run: |
@@ -137,14 +147,27 @@ jobs:
 
           echo "== ALLOC_MATRIX =="
           printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | table"
-      - name: "no_std ${{ inputs.kind }}: Check + Build" 
-        uses: ./.github/actions/no_std/build-and-check-nostd
+
+      - name: "no_std ${{ inputs.kind }}: Check" 
+        uses: ./.github/actions/no_std/check-nostd
         with:
           kind: core
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
 
-      - name: "no_std ${{ inputs.kind }}: Check + Build" 
-        uses: ./.github/actions/no_std/build-and-check-nostd
+      - name: "no_std ${{ inputs.kind }}: build" 
+        uses: ./.github/actions/no_std/build-nostd
+        with:
+          kind: core
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std ${{ inputs.kind }}: Check" 
+        uses: ./.github/actions/no_std/check-nostd
+        with:
+          kind: alloc
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std ${{ inputs.kind }}: build" 
+        uses: ./.github/actions/no_std/build-nostd
         with:
           kind: alloc
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
