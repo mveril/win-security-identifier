@@ -619,6 +619,7 @@ pub mod test {
     #[cfg(windows)]
     mod windows {
         use core::ptr;
+        use core::slice;
 
         use crate::SecurityIdentifier;
 
@@ -654,7 +655,7 @@ pub mod test {
                     }
 
                     let win_len = GetLengthSid(sid_ptr.cast());
-                    let win_bytes = std::slice::from_raw_parts(sid_ptr as *const u8, win_len as usize);
+                    let win_bytes = slice::from_raw_parts(sid_ptr as *const u8, win_len as usize);
 
                     let rust_bytes = sid.as_binary();
                     prop_assert_eq!(
