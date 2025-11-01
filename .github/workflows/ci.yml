@@ -117,7 +117,7 @@ jobs:
           set -euo pipefail
 
           COMBINED_JSON="$(
-           nu .github/workflow/ci/no_std/detect.nu
+           nu .github/workflows/ci/no_std/detect.nu
           )"
 
           # Error if both matrices are empty
@@ -144,7 +144,7 @@ jobs:
           MATRICES_B64: ${{ steps.detect.outputs.matrices_b64 }}
         run: |
           set -euo pipefail
-          printf '%s' "$MATRICES_B64" | nu .github/workflow/ci/no_std/check.nu
+          printf '%s' "$MATRICES_B64" | nu .github/workflows/ci/no_std/check.nu
 
       # BUILD — Bash decode | nu build.nu (stdin JSON; $TARGET via env)
       - name: Cargo build (no_std, release) via Nu stdin
@@ -153,4 +153,4 @@ jobs:
           MATRICES_B64: ${{ steps.detect.outputs.matrices_b64 }}
         run: |
           set -euo pipefail
-          printf '%s' "$MATRICES_B64" | nu .github/workflow/ci/no_std/build.nu
+          printf '%s' "$MATRICES_B64" | nu .github/workflows/ci/no_std/build.nu
