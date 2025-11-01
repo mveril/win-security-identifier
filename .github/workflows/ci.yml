@@ -58,164 +58,77 @@ jobs:
       - run: cargo test --workspace --all-features --all-targets -- --nocapture
 
   no-std:
-    name: no_std (Nu detect core/alloc → build)
+    name: no_std (detect core/alloc → check+build) [bash + nu files via stdin/stdout]
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       CARGO_TERM_COLOR: always
-      RUSTFLAGS: -D warnings
-      RUSTDOCFLAGS: -D warnings
       CARGO_INCREMENTAL: 0
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: hustcer/setup-nu@v3
+      - name: Checkout
+        uses: actions/checkout@<pin-to-commit-sha>
+
+      - name: Set up Rust (stable + bare target)
+        uses: dtolnay/rust-toolchain@<pin-to-commit-sha>
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-none
+
+      - name: Cache cargo/target
+        uses: Swatinem/rust-cache@<pin-to-commit-sha>
+
+      - name: Install Nushell
+        uses: hustcer/setup-nu@<pin-to-commit-sha>
         with:
           version: '0.108.0'
-      - name: Toolchain + bare-metal target
+
+      - name: Detect no_std matrices (Bash → Nu via stdin/stdout → single output)
+        id: detect
+        shell: bash
         run: |
-          rustup set profile minimal
-          rustup update stable
-          rustup default stable
-          rustup target add x86_64-unknown-none
+          set -euo pipefail
+          TARGET="x86_64-unknown-none"
+          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
 
-      - name: detect-core-alloc (Nu → files)
-        shell: nu {0}
+          COMBINED_JSON="$(
+           nu .github/workflow/ci/no_std/detect.nu
+          )"
+
+          # Échec si vide
+          LEN_CORE="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get core | length')"
+          LEN_ALLOC="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get alloc | length')"
+          if [[ "$LEN_CORE" -eq 0 && "$LEN_ALLOC" -eq 0 ]]; then
+            echo "FATAL: Both CORE and ALLOC matrices are empty." >&2
+            exit 1
+          fi
+
+          # Output unique encodé base64 (sans \n)
+          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | base64 | tr -d '\n')"
+          echo "matrices_b64=$MATRICES_B64" >> "$GITHUB_OUTPUT"
+
+          # Log humain
+          echo "== CORE_MATRIX ==";
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get core | table'
+          echo "== ALLOC_MATRIX ==";
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get alloc | table'
+
+      # CHECK — Bash decode | nu check.nu (stdin JSON; $TARGET via env)
+      - name: Cargo check (no_std) via Nu stdin
+        shell: bash
+        env:
+          MATRICES_B64: ${{ steps.detect.outputs.matrices_b64 }}
+          TARGET:       ${{ steps.detect.outputs.target }}
         run: |
-          # Base dirs and metadata
-          let base = ($env.RUNNER_TEMP | path join 'ci')
-          mkdir $base | ignore
-          let target_bare = "x86_64-unknown-none"
+          set -euo pipefail
+          printf '%s' "$MATRICES_B64" | base64 -d | nu .github/workflow/ci/no_std/check.nu
 
-          let meta = (cargo metadata --no-deps --format-version=1 | from json)
-
-          # Workspace members (IDs) → join back to `packages` by id
-          let members = $meta.workspace_members
-          let pkgs_ws = (
-            $meta.packages
-            | where {|p| $members | any {|m| $m == $p.id}}
-          )
-
-          # Keep packages that are NOT "proc-macro only"
-          let pkgs_liblike = (
-            $pkgs_ws
-            | where {|p|
-                not (
-                  $p.targets | all {|t| $t.kind | any {|k| $k == 'proc-macro'}}
-                )
-              }
-            | select id name features targets
-            | sort-by name
-          )
-
-          # Debug: kinds seen & selection
-          ($pkgs_ws
-            | select name targets
-            | each {|p| { name: $p.name, kinds: ($p.targets | each {|t| $t.kind} | flatten | uniq | sort) }}
-          ) | to json | save --force ($base | path join 'targets_seen.json')
-
-          ($pkgs_liblike | select id name | to json) | save --force ($base | path join 'selected_ws_liblike.json')
-
-          # Helper: extras = all features except default/std/alloc
-          def to_extras [feat_map] {
-            let keys = (if ($feat_map == null) { [] } else { $feat_map | columns })
-            let extras = ($keys | where {|f| $f != 'default' and $f != 'std' and $f != 'alloc'} | sort | str join ',')
-            if ($extras | is-empty) { '' } else { $extras }
-          }
-
-          # Build matrices from the same base
-          mut core_matrix = []
-          mut alloc_matrix = []
-
-          for p in $pkgs_liblike {
-            let extras = (to_extras $p.features)
-            let core_args = if ($extras == '') { '--no-default-features' } else { $"--no-default-features --features ($extras)" }
-            $core_matrix = ($core_matrix | append { pkg: $p.name, args: $core_args })
-
-            let keys = (if ($p.features == null) { [] } else { $p.features | columns })
-            if ($keys | any {|f| $f == 'alloc'}) {
-              let alloc_args = if ($extras == '') { '--no-default-features --features alloc' } else { $"--no-default-features --features alloc,($extras)" }
-              $alloc_matrix = ($alloc_matrix | append { pkg: $p.name, args: $alloc_args })
-            }
-          }
-
-          # Persist
-          $target_bare | save --force ($base | path join 'target_bare.txt')
-          ($core_matrix  | to json) | save --force ($base | path join 'core_matrix.json')
-          ($alloc_matrix | to json) | save --force ($base | path join 'alloc_matrix.json')
-
-          # Immediate dump for visibility
-          print '== WORKSPACE MEMBERS (ids) =='
-          $members | each {|m| print $"- ($m)"} | ignore
-
-          print '== SELECTED LIB-LIKE PACKAGES =='
-          ($pkgs_liblike | get name | each {|n| print $"- ($n)"} | ignore)
-
-          print 'CORE_MATRIX (built now):'
-          if ($core_matrix | is-empty) { print '(empty)' } else { $core_matrix | table }
-
-          print 'ALLOC_MATRIX (built now):'
-          if ($alloc_matrix | is-empty) { print '(empty)' } else { $alloc_matrix | table }
-
-          # Sanity check: ensure parsing appears in CORE
-          let core_names = ($core_matrix | get pkg | default [])
-          if (not ($core_names | any {|n| $n == 'win-security-identifier-parsing'})) {
-            print 'ERR: parsing missing from CORE_MATRIX → forcing inclusion.'
-            $core_matrix = ($core_matrix | append { pkg: 'win-security-identifier-parsing', args: '--no-default-features' })
-            ($core_matrix | to json) | save --force ($base | path join 'core_matrix.json')
-          }
-
-          if (($core_matrix | is-empty) and ($alloc_matrix | is-empty)) { print 'FATAL: Both CORE_MATRIX and ALLOC_MATRIX are empty.'; exit 1 }
-
-      - name: Debug matrices (Nu)
-        if: always()
-        shell: nu {0}
+      # BUILD — Bash decode | nu build.nu (stdin JSON; $TARGET via env)
+      - name: Cargo build (no_std, release) via Nu stdin
+        shell: bash
+        env:
+          MATRICES_B64: ${{ steps.detect.outputs.matrices_b64 }}
+          TARGET:       ${{ steps.detect.outputs.target }}
         run: |
-          let base = ($env.RUNNER_TEMP | path join 'ci')
-
-          print 'TARGET KINDS SEEN:'
-          if ($base | path join 'targets_seen.json' | path exists) { open ($base | path join 'targets_seen.json') | table } else { print '(missing targets_seen.json)' }
-
-          print 'SELECTED LIB-LIKE PACKAGES:'
-          if ($base | path join 'selected_ws_liblike.json' | path exists) { open ($base | path join 'selected_ws_liblike.json') | table } else { print '(missing selected_ws_liblike.json)' }
-
-          print 'CORE_MATRIX:'
-          if ($base | path join 'core_matrix.json' | path exists) { let cm = open ($base | path join 'core_matrix.json'); if ($cm | is-empty) { print '(empty)' } else { $cm | table } } else { print '(missing)' }
-
-          print 'ALLOC_MATRIX:'
-          if ($base | path join 'alloc_matrix.json' | path exists) { let am = open ($base | path join 'alloc_matrix.json'); if ($am | is-empty) { print '(empty)' } else { $am | table } } else { print '(missing)' }
-
-      - name: Cargo check (no_std) [Nu]
-        shell: nu {0}
-        run: |
-          let base = ($env.RUNNER_TEMP | path join 'ci')
-          let TARGET = (open --raw ($base | path join 'target_bare.txt') | str trim)
-
-          let core = (if ($base | path join 'core_matrix.json' | path exists) { open ($base | path join 'core_matrix.json') } else { [] })
-          let alloc = (if ($base | path join 'alloc_matrix.json' | path exists) { open ($base | path join 'alloc_matrix.json') } else { [] })
-          let final = ($core | append $alloc)
-
-          if ($final | is-empty) { print 'No no_std rows. Failing for visibility.'; exit 1 }
-
-          for row in $final {
-            let pkg = $row.pkg
-            let args = ($row.args | split row ' ')
-            print $">> check: ($pkg) @ ($TARGET) [$row.args]"
-            ^cargo check -p $pkg --target $TARGET ...$args
-          }
-
-      - name: Cargo build (no_std, release) [Nu]
-        shell: nu {0}
-        run: |
-          let base = ($env.RUNNER_TEMP | path join 'ci')
-          let TARGET = (open --raw ($base | path join 'target_bare.txt') | str trim)
-
-          let core = (if ($base | path join 'core_matrix.json' | path exists) { open ($base | path join 'core_matrix.json') } else { [] })
-          let alloc = (if ($base | path join 'alloc_matrix.json' | path exists) { open ($base | path join 'alloc_matrix.json') } else { [] })
-          let final = ($core | append $alloc)
-
-          for row in $final {
-            let pkg = $row.pkg
-            let args = ($row.args | split row ' ')
-            print $">> build: ($pkg) @ ($TARGET) [$row.args]"
-            ^cargo build -p $pkg --release --target $TARGET ...$args
-          }
+          set -euo pipefail
+          printf '%s' "$MATRICES_B64" | base64 -d | nu .github/workflow/ci/no_std/build.nu
