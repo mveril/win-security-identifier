@@ -114,6 +114,8 @@ pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]
 pub use security_identifier::TokenError;
 pub use sid::Sid;
+#[cfg(doc)]
+pub use std::alloc::Layout;
 
 #[cfg(not(has_ptr_metadata))]
 pub(crate) mod polyfils_ptr;
@@ -146,7 +148,7 @@ pub mod internal;
 /// See [`ConstSid`] for invariants and examples.
 pub use const_sid::ConstSid;
 #[cfg(feature = "std")]
-mod domain_and_name;
+pub mod domain_and_name;
 
 #[cfg(all(windows, feature = "std"))]
 mod sid_lookup;
