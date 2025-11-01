@@ -35,5 +35,5 @@ def main [] {
     }
   }
 
-  { core: $core, alloc: $alloc } | to json
+  { core: $core, alloc: $alloc } | to json --raw
 }

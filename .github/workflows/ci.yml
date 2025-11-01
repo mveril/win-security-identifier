@@ -128,7 +128,7 @@ jobs:
             exit 1
           fi
 
-          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "base64 encode")"
+          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'encode base64')"
           echo "matrices_b64=$MATRICES_B64" >> "$GITHUB_OUTPUT"
 
           # Log humain
