@@ -14,10 +14,10 @@ runs:
     - name: Check no_std {{ inputs.kind }}
       shell: bash
       run: |
-        printf '%s' "{{ inputs.matrices_b64 }}" | nu --stdin .github/workflows/ci/no_std/check.nu {{ inputs.kind }}
+        printf '%s' "{{ inputs.matrices_b64 }}" | nu --stdin .github\action\no_std\build-and-check-nostd\check.nu {{ inputs.kind }}
 
     - name: Build no_std {{ inputs.kind }}
       shell: bash
       run: |
           set -euo pipefail
-          printf '%s' "{{ inputs.matrices_b64 }}" | nu --stdin .github/workflows/ci/no_std/build.nu {{ inputs.kind }}
+          printf '%s' "{{ inputs.matrices_b64 }}" | nu --stdin .github\action\no_std\build-and-check-nostd\build.nu {{ inputs.kind }}
