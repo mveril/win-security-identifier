@@ -95,8 +95,15 @@ jobs:
           rustup component add rustfmt clippy
           rustup target add ${TARGET}
 
-      - name: Cache cargo/target
-        uses: Swatinem/rust-cache@v4
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/advisory-db
+            target
+          key: ${{ runner.os }}-cargo-stable-no_std-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install Nushell
         uses: hustcer/setup-nu@v3
