@@ -115,27 +115,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           COMBINED_JSON="$(
-           nu .github/workflows/ci/no_std/detect.nu
+            nu .github/workflows/ci/no_std/detect.nu
           )"
 
           # Error if both matrices are empty
-          LEN_CORE="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get core | length')"
-          LEN_ALLOC="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get alloc | length')"
+          LEN_CORE="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get core | length")"
+          LEN_ALLOC="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | length")"
+
           if [[ "$LEN_CORE" -eq 0 && "$LEN_ALLOC" -eq 0 ]]; then
             echo "FATAL: Both CORE and ALLOC matrices are empty." >&2
             exit 1
           fi
 
-          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c base64 encode')"
+          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "base64 encode")"
           echo "matrices_b64=$MATRICES_B64" >> "$GITHUB_OUTPUT"
 
           # Log humain
-          echo "== CORE_MATRIX ==";
-          printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get core | table'
-          echo "== ALLOC_MATRIX ==";
-          printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get alloc | table'
+          echo "== CORE_MATRIX =="
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get core | table"
+
+          echo "== ALLOC_MATRIX =="
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | table"
+
 
       # CHECK — Bash decode | nu check.nu (stdin JSON; $TARGET via env)
       - name: Cargo check (no_std) via Nu stdin
