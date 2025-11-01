@@ -36,7 +36,7 @@
 //! ## Windows-only functionality
 //! *Available behind `cfg(windows)`.*
 //!
-//! - [`SecurityIdentifier::get_current_user_sid`] reads the current process token
+//! - [`GetCurrentSid::get_current_user_sid`] reads the current process token
 //!   and returns the user SID.
 //! - `sid_lookup` module: resolves a [`Sid`] to `DOMAIN\Name` and a [`SidType`]
 //!   (`SID_NAME_USE`) using `LookupAccountSidW`.
@@ -113,6 +113,8 @@ mod sid;
 pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]
 pub use security_identifier::TokenError;
+#[cfg(all(windows, feature = "std"))]
+pub use sid::GetCurrentSid;
 pub use sid::Sid;
 #[cfg(doc)]
 pub use std::alloc::Layout;

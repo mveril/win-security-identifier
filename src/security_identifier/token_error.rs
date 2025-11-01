@@ -2,8 +2,6 @@ use thiserror::Error;
 
 /// Errors that can occur when retrieving a Windows process token.
 ///
-/// This enum is used by functions such as
-/// [`SecurityIdentifier::get_current_user_sid`](crate::SecurityIdentifier::get_current_user_sid)
 /// to report failures when working with the Windows security token API.
 ///
 /// Each variant corresponds to a specific failure point.

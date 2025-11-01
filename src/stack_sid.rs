@@ -12,7 +12,7 @@ use core::mem::MaybeUninit;
 use core::ptr::{self, copy_nonoverlapping};
 use core::str::FromStr;
 use delegate::delegate;
-use parsing;
+use parsing::{self, InvalidSidFormat};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -150,6 +150,25 @@ impl StackSid {
     delegate! {
         to self.as_sid_mut() {
             pub fn get_sub_authorities_mut(&mut self) -> &mut [u32];
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a [u8]> for StackSid {
+    type Error = InvalidSidFormat;
+
+    #[inline]
+    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+        let sid: &Sid = value.try_into()?;
+        Ok(sid.into())
+    }
+}
+
+impl<'a> From<&'a Sid> for StackSid {
+    fn from(value: &Sid) -> Self {
+        /// SAFETY: As value is a valid Sid reference, its binary representation is valid.
+        unsafe {
+            Self::try_from(value.as_binary()).unwrap_unchecked()
         }
     }
 }
