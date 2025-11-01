@@ -1,0 +1,163 @@
+name: Release Checks
+
+on:
+  push:
+    branches:
+      - release/*
+  pull_request:
+    branches:
+      - release/*
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    name: "Check crate versions"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      # Optionnel: force a specific crate name if your workspace has multiple crates to release.
+      # CRATE_NAME: win-security-identifier
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Rust toolchain (stable)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup default stable
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Extract branch expected version (SemVer without build metadata)
+        id: extract_version
+        shell: bash
+        run: |
+          BRANCH_NAME="${{ github.ref_name }}"
+          RAW_VERSION="${BRANCH_NAME#release/}"
+
+          if [[ -z "$RAW_VERSION" ]]; then
+            echo "❌ ERROR: Branch does not contain a version after 'release/'."
+            exit 1
+          fi
+
+          # Reject build metadata (e.g., +exp.sha)
+          if [[ "$RAW_VERSION" == *"+"* ]]; then
+            echo "❌ ERROR: Build metadata (+...) is not allowed in release branch names."
+            exit 1
+          fi
+
+          # SemVer pattern: MAJOR.MINOR.PATCH[-PRERELEASE]
+          if [[ "$RAW_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z\.-]+))?$ ]]; then
+            EXPECTED_VERSION="$RAW_VERSION"
+          else
+            echo "❌ ERROR: '$RAW_VERSION' is not a valid SemVer (expected MAJOR.MINOR.PATCH[-PRERELEASE])."
+            exit 1
+          fi
+
+          echo "EXPECTED_VERSION=$EXPECTED_VERSION" >> "$GITHUB_ENV"
+          echo "✅ Expected version from branch: $EXPECTED_VERSION"
+
+      - name: Detect crate name from Cargo.toml (if not provided)
+        id: crate_name
+        shell: bash
+        run: |
+          if [[ -n "${CRATE_NAME:-}" ]]; then
+            NAME="$CRATE_NAME"
+          else
+            # Extract the package.name from the root Cargo.toml (simple parser for standard cases)
+            if [[ -f Cargo.toml ]]; then
+              NAME="$(awk -F'=' '/^\s*name\s*=/ {gsub(/[" ]/, "", $2); print $2; exit}' Cargo.toml)"
+            fi
+          fi
+
+          if [[ -z "$NAME" ]]; then
+            echo "❌ ERROR: Could not detect crate name. Set env CRATE_NAME or ensure root Cargo.toml has [package].name."
+            exit 1
+          fi
+
+          echo "CRATE_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "📦 Crate: $NAME"
+
+      - name: Compare crate version with expected version
+        shell: bash
+        run: |
+          # Ensure lockfile exists for commands relying on resolution; not strictly required but harmless.
+          cargo generate-lockfile || true
+
+          # Get current crate version via cargo pkgid (format: path#name:version or name#version)
+          PKGID_OUTPUT="$(cargo pkgid -p "$CRATE_NAME" 2>/dev/null || true)"
+          if [[ -z "$PKGID_OUTPUT" ]]; then
+            echo "❌ ERROR: 'cargo pkgid -p $CRATE_NAME' returned nothing. Check the crate name."
+            exit 1
+          fi
+
+          # Extract '#...:version' or '#version'
+          if [[ "$PKGID_OUTPUT" =~ \#([^:]+:)?([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z\.-]+)?)$ ]]; then
+            CURRENT_VERSION="${BASH_REMATCH[2]}"
+          else
+            echo "❌ ERROR: Failed to parse version from cargo pkgid output: $PKGID_OUTPUT"
+            exit 1
+          fi
+
+          echo "Detected crate version: $CURRENT_VERSION"
+          echo "Expected version:       $EXPECTED_VERSION"
+
+          if [[ "$CURRENT_VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "❌ ERROR: Crate version '$CURRENT_VERSION' does not match expected '$EXPECTED_VERSION'."
+            exit 1
+          fi
+
+          echo "✅ Versions match."
+
+  publish-dry-run:
+    needs: version-check
+    runs-on: ubuntu-latest
+    name: "Publish Dry-Run"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      # Optionnel: forcer le nom du crate si nécessaire
+      # CRATE_NAME: win-security-identifier
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Rust toolchain (stable)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup default stable
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run tests (workspace, all targets, all features)
+        shell: bash
+        run: |
+          cargo test --workspace --all-targets --all-features -- --nocapture
+
+      - name: Publish Dry-Run (workspace)
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # Dry-run accepts prerelease versions normally; no build metadata allowed by our branch rule.
+          cargo publish --workspace --dry-run

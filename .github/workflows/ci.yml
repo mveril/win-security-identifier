@@ -1,0 +1,150 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main, develop, 'release/*']
+  pull_request:
+    branches: [main, develop, 'release/*']
+  schedule:
+    - cron: '0 3 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-test-std:
+    name: Build & test (${{ matrix.os }}, ${{ matrix.toolchain }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        toolchain: [stable, nightly]
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
+      CARGO_INCREMENTAL: 0
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
+      - name: Install Rust toolchain (${{ matrix.toolchain }})
+        run: |
+          rustup set profile minimal
+          rustup update ${{ matrix.toolchain }}
+          rustup default ${{ matrix.toolchain }}
+          rustup component add rustfmt clippy
+    
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/advisory-db
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.toml') }}
+        
+      - name: Show toolchain versions
+        run: rustc -Vv && cargo -V
+        
+      - name: Install cargo-audit (nightly Linux only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
+        run: cargo install cargo-audit || echo "cargo-audit already installed"
+        
+      - name: Run cargo audit (nightly Linux only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
+        run: cargo audit
+        
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        
+      - name: Run clippy (lint all targets)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        
+      - name: Build workspace
+        run: cargo build --workspace --all-features
+        
+      - name: Run tests
+        run: cargo test --workspace --all-features --all-targets -- --nocapture
+
+  no-std:
+    name: no_std (detect core/alloc → check+build) [bash + nu files via stdin/stdout]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TARGET: x86_64-unknown-none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable for no_std))
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup component add rustfmt clippy
+          rustup target add ${TARGET}
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/advisory-db
+            target
+          key: ${{ runner.os }}-cargo-stable-no_std-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: '0.108.0'
+
+      - name: Detect no_std matrices (Bash → Nu via stdin/stdout → single output)
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMBINED_JSON="$(
+            nu .github/workflows/ci/no_std/detect.nu
+          )"
+
+          # Error if both matrices are empty
+          LEN_CORE="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get core | length")"
+          LEN_ALLOC="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | length")"
+
+          if [[ "$LEN_CORE" -eq 0 && "$LEN_ALLOC" -eq 0 ]]; then
+            echo "FATAL: Both CORE and ALLOC matrices are empty." >&2
+            exit 1
+          fi
+
+          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'encode base64')"
+          echo "matrices_b64=$MATRICES_B64" >> "$GITHUB_OUTPUT"
+
+          # Log humain
+          echo "== CORE_MATRIX =="
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get core | table"
+
+          echo "== ALLOC_MATRIX =="
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | table"
+      - name: "no_std ${{ inputs.kind }}: Check + Build" 
+        uses: ./.github/actions/no_std/build-and-check-nostd
+        with:
+          kind: core
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std ${{ inputs.kind }}: Check + Build" 
+        uses: ./.github/actions/no_std/build-and-check-nostd
+        with:
+          kind: alloc
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}

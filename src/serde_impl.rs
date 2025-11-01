@@ -49,7 +49,7 @@ impl Serialize for SecurityIdentifier {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 impl<'de> Deserialize<'de> for SecurityIdentifier {
     #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

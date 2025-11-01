@@ -513,8 +513,8 @@ impl PartialEq for SecurityIdentifier {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, reason = "Expect is not an issue on tests")]
-#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in tests")]
+#[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
+#[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
 pub mod test {
     use super::super::SecurityIdentifier;
     use super::super::Sid;
