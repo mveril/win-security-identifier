@@ -1,3 +1,4 @@
+#![allow(rustdoc::missing_crate_level_docs, reason = "Internal crate")]
 #![cfg_attr(not(feature = "std"), no_std)]
 use core::fmt::{self, Display};
 use core::str::FromStr;
