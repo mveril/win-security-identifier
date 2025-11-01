@@ -48,6 +48,7 @@ where
             // SAFETY: GetLastError is side-effect free and can be called unconditionally.
 
             use crate::TokenError;
+            // SAFETY: GetLastError can be called immediately after a failing FFI call.
             let err = unsafe { GetLastError() };
             return Err(TokenError::OpenTokenFailed(err));
         }

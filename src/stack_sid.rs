@@ -164,12 +164,11 @@ impl<'a> TryFrom<&'a [u8]> for StackSid {
     }
 }
 
-impl<'a> From<&'a Sid> for StackSid {
+impl From<&Sid> for StackSid {
+    #[inline]
     fn from(value: &Sid) -> Self {
-        /// SAFETY: As value is a valid Sid reference, its binary representation is valid.
-        unsafe {
-            Self::try_from(value.as_binary()).unwrap_unchecked()
-        }
+        // SAFETY: As value is a valid Sid reference, its binary representation is valid.
+        unsafe { Self::try_from(value.as_binary()).unwrap_unchecked() }
     }
 }
 

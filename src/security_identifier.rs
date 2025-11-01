@@ -5,7 +5,6 @@ use crate::SidSizeInfo;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfils_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
-use core::from;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
 use parsing::SidComponents;
@@ -379,6 +378,7 @@ impl TryFrom<&[u8]> for SecurityIdentifier {
 }
 
 impl<'a> From<&'a Sid> for SecurityIdentifier {
+    #[inline]
     fn from(value: &'a Sid) -> Self {
         value.to_owned()
     }
