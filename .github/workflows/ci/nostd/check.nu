@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# .github/workflow/ci/no_std/check.nu
+# ci/no_std/check.nu
 # Read combined JSON {core, alloc} from stdin; use $env.TARGET; run cargo check --locked.
 
 def main []: {

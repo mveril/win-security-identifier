@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# .github/workflow/ci/no_std/detect.nu
+# ci/no_std/detect.nu
 # Read cargo metadata JSON from stdin; write a single JSON object:
 # { core: [{pkg, args: [..]}], alloc: [{pkg, args: [..]}] }
 

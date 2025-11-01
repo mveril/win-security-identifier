@@ -1,4 +1,4 @@
-# .github/workflow/ci/no_std/lib.nu
+# ci/no_std/lib.nu
 # Exported helpers for no_std detection.
 
 export def feature-extras [feat_map?: record]: nothing -> list<string> {

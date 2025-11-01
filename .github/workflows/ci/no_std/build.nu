@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# .github/workflow/ci/no_std/build.nu
+# ci/no_std/build.nu
 # Read combined JSON {core, alloc} from stdin; use $env.TARGET; run cargo build --locked --release.
 
 def main [] {

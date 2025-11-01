@@ -79,7 +79,7 @@ jobs:
         uses: Swatinem/rust-cache@<pin-to-commit-sha>
 
       - name: Install Nushell
-        uses: hustcer/setup-nu@<pin-to-commit-sha>
+        uses: hustcer/setup-nu
         with:
           version: '0.108.0'
 
