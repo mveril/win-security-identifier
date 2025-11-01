@@ -87,7 +87,7 @@ jobs:
         run: cargo doc --workspace --all-features --no-deps
 
   no-std:
-    name: no_std (detect core/alloc → check+build) [bash + nu files via stdin/stdout]
+    name: no_std check and build
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -103,7 +103,6 @@ jobs:
         run: |
           rustup set profile minimal
           rustup update stable
-          rustup component add rustfmt clippy
           rustup target add ${TARGET}
 
       - name: Cache cargo dependencies
@@ -121,7 +120,7 @@ jobs:
         with:
           version: '0.108.0'
 
-      - name: Detect no_std matrices (Bash → Nu via stdin/stdout → single output)
+      - name: Detect no_std matrices
         id: detect
         shell: bash
         run: |
@@ -164,7 +163,7 @@ jobs:
       - name: "no_std ${{ inputs.kind }}: Check" 
         uses: ./.github/actions/no_std/check-nostd
         with:
-          kind: core
+          kind: alloc
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
 
       - name: "no_std ${{ inputs.kind }}: build" 
