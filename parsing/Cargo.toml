@@ -9,6 +9,10 @@ repository.workspace = true
 keywords = ["windows", "sid", "security-identifier", "acl", "sddl"]
 categories = ["os::windows-apis", "parser-implementations", "data-structures"]
 
+[features]
+default = ["std"]
+std = ["thiserror/std"]
+
 [dependencies]
 arrayvec = { workspace = true }
 thiserror = { workspace = true }
