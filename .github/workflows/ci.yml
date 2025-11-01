@@ -74,6 +74,8 @@ jobs:
         
       - name: Run tests
         run: cargo test --workspace --all-features --all-targets -- --nocapture
+      - name: Run documentation tests
+        run: cargo doc --workspace --all-features --no-deps
 
   no-std:
     name: no_std (detect core/alloc → check+build) [bash + nu files via stdin/stdout]

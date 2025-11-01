@@ -5,11 +5,11 @@
 //! - `FromStr` parses with the default policy (exactly one `\`).
 //! - Optional validation is controlled by a lightweight `ParsePolicy`.
 
-use std::{
-    ffi::{OsStr, OsString},
+use core::{
     fmt::{self, Display},
     str::FromStr,
 };
+use std::ffi::{OsStr, OsString};
 
 use thiserror::Error;
 
@@ -21,6 +21,7 @@ pub enum Component {
 }
 
 impl Display for Component {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Domain => f.write_str("domain"),
@@ -94,6 +95,8 @@ impl ParsePolicy {
     };
 
     /// Const constructor for convenience.
+    #[inline]
+    #[must_use]
     pub const fn new(
         allow_empty_domain: bool,
         allow_empty_name: bool,
@@ -109,7 +112,7 @@ impl ParsePolicy {
     }
 
     /// Validate a single component against this policy (runtime, cross‑platform).
-    pub fn validate_component(
+    pub(super) fn validate_component(
         &self,
         which: Component,
         s: &OsStr,
@@ -152,7 +155,11 @@ impl ParsePolicy {
     }
 
     /// Validate both components (runtime).
-    pub fn validate_pair(&self, domain: &OsStr, name: &OsStr) -> Result<(), DomainParsingError> {
+    pub(super) fn validate_pair(
+        &self,
+        domain: &OsStr,
+        name: &OsStr,
+    ) -> Result<(), DomainParsingError> {
         self.validate_component(Component::Domain, domain)?;
         self.validate_component(Component::Name, name)?;
         Ok(())
@@ -160,6 +167,7 @@ impl ParsePolicy {
 }
 
 impl Default for ParsePolicy {
+    #[inline]
     fn default() -> Self {
         Self::DEFAULT
     }
@@ -241,7 +249,7 @@ impl DomainAndName {
 
     /// Validating constructor from owned parts.
     /// # Errors
-    /// See [`DomainParsingError`] and [`ParsePolicy`].
+    /// See [`DomainParsingError`].
     #[inline]
     pub fn try_new_with_policy<D: Into<OsString>, N: Into<OsString>>(
         policy: &ParsePolicy,
