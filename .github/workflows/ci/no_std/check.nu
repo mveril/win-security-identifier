@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ci/no_std/check.nu
-# Read combined JSON {core, alloc} from stdin; use $env.TARGET; run cargo check --locked.
+# Read combined JSON {core, alloc} from stdin; use $env.TARGET; run cargo check.
 
 def main []: string -> nothing {
   let data = ($in | decode base64 | decode | from json)
@@ -14,6 +14,6 @@ def main []: string -> nothing {
     let pkg  = $row.pkg
     let args = $row.args  # list<string>
     print $">> check: ($pkg) @ ($env.TARGET) [($args | str join ' ')]"
-    ^cargo check --locked -p $pkg --target $env.TARGET ...$args
+    ^cargo check -p $pkg --target $env.TARGET ...$args
   }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ci/no_std/build.nu
-# Read combined JSON {core, alloc} from stdin; use $env.TARGET; run cargo build --locked --release.
+# Read combined JSON {core, alloc} from stdin; use $env.TARGET; run cargo build --release.
 
 def main [] {
   let data = ($in | decode base64 | decode | from json) 
@@ -10,6 +10,6 @@ def main [] {
     let pkg  = $row.pkg
     let args = $row.args
     print $">> build: ($pkg) @ ($env.TARGET) [($args | str join ' ')]"
-    ^cargo build --locked --release -p $pkg --target $env.TARGET ...$args
+    ^cargo build --release -p $pkg --target $env.TARGET ...$args
   }
 }

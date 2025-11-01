@@ -57,7 +57,7 @@ jobs:
         
       - name: Install cargo-audit (nightly Linux only)
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
-        run: cargo install --locked cargo-audit || echo "cargo-audit already installed"
+        run: cargo install cargo-audit || echo "cargo-audit already installed"
         
       - name: Run cargo audit (nightly Linux only)
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
