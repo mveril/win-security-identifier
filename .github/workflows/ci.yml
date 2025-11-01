@@ -30,16 +30,20 @@ jobs:
       RUSTFLAGS: -D warnings
       RUSTDOCFLAGS: -D warnings
       CARGO_INCREMENTAL: 0
-
+    
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Rust toolchain (${{ matrix.toolchain }})
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
+      - name: Install Rust toolchain (${{ matrix.toolchain }})
         run: |
           rustup set profile minimal
           rustup update ${{ matrix.toolchain }}
           rustup default ${{ matrix.toolchain }}
           rustup component add rustfmt clippy
-      - uses: actions/cache@v4
+    
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -47,15 +51,29 @@ jobs:
             ~/.cargo/advisory-db
             target
           key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.toml') }}
-      - run: rustc -Vv && cargo -V
-      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
+        
+      - name: Show toolchain versions
+        run: rustc -Vv && cargo -V
+        
+      - name: Install cargo-audit (nightly Linux only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
         run: cargo install --locked cargo-audit || echo "cargo-audit already installed"
-      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
+        
+      - name: Run cargo audit (nightly Linux only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
         run: cargo audit
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - run: cargo build --workspace --all-features
-      - run: cargo test --workspace --all-features --all-targets -- --nocapture
+        
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        
+      - name: Run clippy (lint all targets)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        
+      - name: Build workspace
+        run: cargo build --workspace --all-features
+        
+      - name: Run tests
+        run: cargo test --workspace --all-features --all-targets -- --nocapture
 
   no-std:
     name: no_std (detect core/alloc → check+build) [bash + nu files via stdin/stdout]
@@ -64,19 +82,21 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
+      TARGET: x86_64-unknown-none
 
     steps:
       - name: Checkout
-        uses: actions/checkout@<pin-to-commit-sha>
+        uses: actions/checkout@v4
 
-      - name: Set up Rust (stable + bare target)
-        uses: dtolnay/rust-toolchain@<pin-to-commit-sha>
-        with:
-          toolchain: stable
-          targets: x86_64-unknown-none
+      - name: Install Rust toolchain (stable for no_std))
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup component add rustfmt clippy
+          rustup target add ${TARGET}
 
       - name: Cache cargo/target
-        uses: Swatinem/rust-cache@<pin-to-commit-sha>
+        uses: Swatinem/rust-cache@v4
 
       - name: Install Nushell
         uses: hustcer/setup-nu
@@ -88,14 +108,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TARGET="x86_64-unknown-none"
-          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
 
           COMBINED_JSON="$(
            nu .github/workflow/ci/no_std/detect.nu
           )"
 
-          # Échec si vide
+          # Error if both matrices are empty
           LEN_CORE="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get core | length')"
           LEN_ALLOC="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'from json | get alloc | length')"
           if [[ "$LEN_CORE" -eq 0 && "$LEN_ALLOC" -eq 0 ]]; then
@@ -103,8 +121,7 @@ jobs:
             exit 1
           fi
 
-          # Output unique encodé base64 (sans \n)
-          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | base64 | tr -d '\n')"
+          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c base64 encode')"
           echo "matrices_b64=$MATRICES_B64" >> "$GITHUB_OUTPUT"
 
           # Log humain
@@ -118,17 +135,15 @@ jobs:
         shell: bash
         env:
           MATRICES_B64: ${{ steps.detect.outputs.matrices_b64 }}
-          TARGET:       ${{ steps.detect.outputs.target }}
         run: |
           set -euo pipefail
-          printf '%s' "$MATRICES_B64" | base64 -d | nu .github/workflow/ci/no_std/check.nu
+          printf '%s' "$MATRICES_B64" | nu .github/workflow/ci/no_std/check.nu
 
       # BUILD — Bash decode | nu build.nu (stdin JSON; $TARGET via env)
       - name: Cargo build (no_std, release) via Nu stdin
         shell: bash
         env:
           MATRICES_B64: ${{ steps.detect.outputs.matrices_b64 }}
-          TARGET:       ${{ steps.detect.outputs.target }}
         run: |
           set -euo pipefail
-          printf '%s' "$MATRICES_B64" | base64 -d | nu .github/workflow/ci/no_std/build.nu
+          printf '%s' "$MATRICES_B64" | nu .github/workflow/ci/no_std/build.nu

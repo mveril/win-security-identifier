@@ -3,7 +3,7 @@
 # Read combined JSON {core, alloc} from stdin; use $env.TARGET; run cargo check --locked.
 
 def main []: string -> nothing {
-  let data = ($in  | from json)
+  let data = ($in | decode base64 | decode | from json)
   let rows = ([$data.core, $data.alloc] | flatten)
 
   if ($rows | is-empty) {
