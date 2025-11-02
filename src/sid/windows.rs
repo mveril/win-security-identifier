@@ -2,6 +2,8 @@ use std::ffi::OsStr;
 
 use widestring::WideCString;
 use windows_sys::Win32::Security::PSID;
+mod get_current_ext;
+pub use get_current_ext::GetCurrentSid;
 
 #[cfg(windows)]
 use crate::sid_lookup::Error;
