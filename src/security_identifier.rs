@@ -377,6 +377,13 @@ impl TryFrom<&[u8]> for SecurityIdentifier {
     }
 }
 
+impl<'a> From<&'a Sid> for SecurityIdentifier {
+    #[inline]
+    fn from(value: &'a Sid) -> Self {
+        value.to_owned()
+    }
+}
+
 impl FromStr for SecurityIdentifier {
     type Err = InvalidSidFormat;
 
