@@ -28,6 +28,10 @@ where
     /// println!("{}", sid);
     /// # }
     /// ```
+    #[allow(
+        clippy::missing_inline_in_public_items,
+        reason = "Too complex to inline"
+    )]
     fn get_current_user_sid() -> Result<Self, TokenError> {
         // --- Open the process token ------------------------------------------------
         let mut raw_handle_mu: MaybeUninit<RawHandle> = MaybeUninit::uninit();
