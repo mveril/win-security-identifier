@@ -1,5 +1,5 @@
 #[cfg(not(has_ptr_metadata))]
-use crate::polyfils_ptr::{from_raw_parts, from_raw_parts_mut};
+use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
 use core::hash::Hash;
 #[cfg(has_ptr_metadata)]
 use core::ptr::{from_raw_parts, from_raw_parts_mut};

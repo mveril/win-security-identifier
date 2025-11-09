@@ -27,6 +27,7 @@ pub enum Error {
 }
 
 impl From<NonZeroU32> for Error {
+    #[inline]
     fn from(code: NonZeroU32) -> Self {
         let code = code.get();
         match code {
