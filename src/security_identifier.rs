@@ -424,7 +424,7 @@ pub mod test {
     use super::super::Sid;
     use super::super::sid_identifier_authority::test::arb_identifier_authority;
     #[cfg(not(has_ptr_metadata))]
-    use crate::polyfils_ptr::metadata;
+    use crate::polyfills_ptr::metadata;
     #[cfg(has_layout_for_ptr)]
     use core::alloc::Layout;
     use core::hash::Hash;
