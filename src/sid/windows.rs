@@ -1,13 +1,11 @@
 use std::ffi::OsStr;
-
 use widestring::WideCString;
 use windows_sys::Win32::Security::PSID;
-mod get_current_ext;
-pub use get_current_ext::GetCurrentSid;
+pub mod sid_lookup;
 
 #[cfg(windows)]
-use crate::sid_lookup::Error;
-use crate::{SidLookupResult, SidType, sid_lookup::SidLookupOperation};
+use crate::sid::sid_lookup::SidLookup;
+use crate::sid::sid_lookup::{SidLookupOperation, SidType};
 
 use super::Sid;
 
@@ -51,7 +49,10 @@ impl Sid {
     /// Internal: full lookup on a given machine.
     #[cfg(windows)]
     #[inline]
-    fn lookup_impl(&self, machine: Option<&WideCString>) -> Option<Result<SidLookupResult, Error>> {
+    fn lookup_impl(
+        &self,
+        machine: Option<&WideCString>,
+    ) -> Option<Result<SidLookup, sid_lookup::Error>> {
         // Build once, then process. Keeps the public API tiny.
         SidLookupOperation::new(self, machine).map(SidLookupOperation::process)
     }
@@ -78,7 +79,7 @@ impl Sid {
     /// Performs a lookup of this SID on the local machine.
     #[inline]
     #[must_use]
-    pub fn lookup_local_sid(&self) -> Option<Result<SidLookupResult, Error>> {
+    pub fn lookup_local_sid(&self) -> Option<Result<SidLookup, sid_lookup::Error>> {
         self.lookup_impl(None)
     }
 
@@ -90,7 +91,7 @@ impl Sid {
     pub fn lookup_remote_sid<S: AsRef<OsStr>>(
         &self,
         machine_name: S,
-    ) -> Option<Result<SidLookupResult, Error>> {
+    ) -> Option<Result<SidLookup, sid_lookup::Error>> {
         Self::osstr_to_wide(machine_name.as_ref()).and_then(|w| self.lookup_impl(Some(&w)))
     }
 

@@ -1,6 +1,8 @@
+use crate::Sid;
+
 use super::Error;
-use super::SidLookupResult;
-use crate::{DomainAndName, Sid};
+use super::SidLookup;
+use super::domain_and_name::DomainAndName;
 use core::num::NonZeroU32;
 use core::ptr::{null, null_mut};
 use smallvec::SmallVec;
@@ -53,7 +55,7 @@ impl<'a> SidLookupOperation<'a> {
         })
     }
 
-    pub(crate) fn process(mut self) -> Result<SidLookupResult, Error> {
+    pub(crate) fn process(mut self) -> Result<SidLookup, Error> {
         let mut name_buffer = SmallVec::<[u16; 256]>::with_capacity(self.name_len as usize);
         let mut domain_buffer = SmallVec::<[u16; 256]>::with_capacity(self.domain_len as usize);
         // Safety: All parameters of `LookupAccountSidW` are valid.
@@ -93,7 +95,7 @@ impl<'a> SidLookupOperation<'a> {
                 }
                 let name = OsString::from_wide(name_buffer.as_slice());
                 let domain = OsString::from_wide(domain_buffer.as_slice());
-                Ok(SidLookupResult {
+                Ok(SidLookup {
                     domain_name: DomainAndName::new(domain, name),
                     sid_type_raw: self.sid_type_raw,
                 })

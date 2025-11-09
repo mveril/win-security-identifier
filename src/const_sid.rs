@@ -1,7 +1,7 @@
 #[cfg(feature = "alloc")]
 use crate::SecurityIdentifier;
 #[cfg(not(has_ptr_metadata))]
-use crate::polyfils_ptr::{from_raw_parts, from_raw_parts_mut};
+use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
 use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::borrow::ToOwned;

@@ -6,7 +6,10 @@
 
 use serde::Deserialize;
 use std::process::{Command, Stdio};
-use win_security_identifier::{DomainAndName, SecurityIdentifier, SidType};
+use win_security_identifier::{
+    GetCurrentSid, SecurityIdentifier, Sid, StackSid,
+    sid_lookup::{DomainAndName, SidType},
+};
 
 #[derive(Debug, Deserialize)]
 struct PsUser {
@@ -30,7 +33,19 @@ fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
 }
 
 #[test]
-fn current_user_sid_and_account() {
+fn current_user_sid_and_account_heap() {
+    current_user_sid_and_account::<SecurityIdentifier>();
+}
+#[test]
+fn current_user_sid_and_account_stack() {
+    current_user_sid_and_account::<StackSid>();
+}
+
+fn current_user_sid_and_account<T>()
+where
+    T: Sized,
+    for<'a> &'a Sid: Into<T>,
+{
     const PS_SCRIPT: &str = include_str!("assets/get_sid_account.ps1");
 
     let args = &[
