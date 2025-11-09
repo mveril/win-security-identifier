@@ -2,7 +2,7 @@
 members = [".", "parsing", "macro"]
 resolver = "2"
 package.version = "0.1.0"
-package.authors = ["Mickaël Véril <mickael.veril@wanadoo.fr"]
+package.authors = ["Mickaël Véril <mickael.veril@wanadoo.fr>"]
 package.license = "MIT OR Apache-2.0"
 package.edition = "2024"
 package.repository = "https://github.com/mveril/win-security-identifier"
