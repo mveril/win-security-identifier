@@ -3,13 +3,8 @@ use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
 #[cfg(not(has_ptr_metadata))]
-use crate::polyfils_ptr::from_raw_parts_mut;
+use crate::polyfills_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
-#[cfg(has_ptr_metadata)]
-use core::ptr::from_raw_parts_mut;
-use parsing::SidComponents;
-#[cfg(all(windows, feature = "std"))]
-mod token_error;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
 use ::core::alloc::Layout;
@@ -17,12 +12,13 @@ use ::core::alloc::Layout;
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::ops::DerefMut;
+#[cfg(has_ptr_metadata)]
+use core::ptr::from_raw_parts_mut;
 use core::str::FromStr;
 use core::{ops::Deref, ptr::NonNull};
+use parsing::SidComponents;
 #[cfg(feature = "std")]
 use std::{alloc, borrow::ToOwned};
-#[cfg(all(windows, feature = "std"))]
-pub use token_error::TokenError;
 
 /// Owned, heap-allocated Windows **Security Identifier** (SID).
 ///
@@ -175,107 +171,6 @@ impl SecurityIdentifier {
         }
 
         Self { sid: ptr, layout }
-    }
-
-    /// Retrieves the current user's SID from the process token (Windows only).
-    ///
-    /// # Errors
-    /// Returns a `TokenError` when opening the token or querying it fails.
-    ///
-    /// # Examples
-    /// ```no_run
-    /// # #[cfg(windows)]
-    /// # {
-    /// # use win_security_identifier::SecurityIdentifier;
-    /// let sid = SecurityIdentifier::get_current_user_sid().unwrap();
-    /// println!("{}", sid);
-    /// # }
-    /// ```
-    #[cfg(all(windows, feature = "std"))]
-    #[allow(
-        clippy::missing_inline_in_public_items,
-        reason = "Too complex to inline"
-    )]
-    pub fn get_current_user_sid() -> Result<Self, TokenError> {
-        use core::mem::MaybeUninit;
-        use core::ptr;
-        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
-        use windows_sys::Win32::{
-            Foundation::GetLastError,
-            Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser},
-            System::Threading::{GetCurrentProcess, OpenProcessToken},
-        };
-
-        // --- Open the process token ------------------------------------------------
-        let mut raw_handle_mu: MaybeUninit<RawHandle> = MaybeUninit::uninit();
-
-        // SAFETY: GetCurrentProcess is side-effect free and can be called unconditionally.
-        let process_handle = unsafe { GetCurrentProcess() };
-        // SAFETY: FFI call; pointers are valid. We check the return value immediately.
-        let open_ok =
-            unsafe { OpenProcessToken(process_handle, TOKEN_QUERY, raw_handle_mu.as_mut_ptr()) };
-
-        if open_ok == 0 {
-            // SAFETY: GetLastError is side-effect free and can be called unconditionally.
-            let err = unsafe { GetLastError() };
-            return Err(TokenError::OpenTokenFailed(err));
-        }
-
-        // SAFETY: OpenProcessToken reported success; the handle is initialized.
-        let raw_handle: RawHandle = unsafe { raw_handle_mu.assume_init() };
-
-        // SAFETY: `raw_handle` is a valid owned handle obtained from the OS.
-        let token_handle: OwnedHandle = unsafe { OwnedHandle::from_raw_handle(raw_handle) };
-
-        // --- First GetTokenInformation to obtain required size ---------------------
-        let mut size: u32 = 0;
-        // SAFETY: Standard size-query pattern with null buffer and 0 length.
-        let first_ok = unsafe {
-            GetTokenInformation(
-                token_handle.as_raw_handle(),
-                TokenUser,
-                ptr::null_mut(),
-                0,
-                &raw mut size,
-            )
-        };
-
-        if first_ok != 0 {
-            // Unexpected success: should fail to report size.
-            return Err(TokenError::GetTokenSizeFailed);
-        }
-
-        // --- Allocate buffer with reported size ------------------------------------
-        let mut buffer = vec![0u8; size as usize];
-
-        // SAFETY: Buffer pointer/length are consistent with allocation; size was set by the API.
-        let second_ok = unsafe {
-            GetTokenInformation(
-                token_handle.as_raw_handle(),
-                TokenUser,
-                buffer.as_mut_ptr().cast(),
-                size,
-                &raw mut size,
-            )
-        };
-
-        if second_ok == 0 {
-            // SAFETY: GetLastError can be called immediately after a failing FFI call.
-            let err = unsafe { GetLastError() };
-            return Err(TokenError::GetTokenInfoFailed(err));
-        }
-        #[expect(
-            clippy::cast_ptr_alignment,
-            reason = "read_unaligned handles unaligned access"
-        )]
-        let token_user_ptr = buffer.as_ptr().cast::<TOKEN_USER>();
-        // SAFETY: TOKEN_USER is a plain data struct and can be read from a byte buffer.
-        let sid_ptr = unsafe { ptr::addr_of!((*token_user_ptr).User.Sid) };
-        // SAFETY: TOKEN_USER contains a PSID which is a pointer to a valid SID.
-        let raw_sid = unsafe { ptr::read_unaligned(sid_ptr) };
-        // SAFETY: get the user Sid from the raw pointer structure.
-        let sid = unsafe { Sid::from_raw(raw_sid) };
-        Ok(sid.to_owned())
     }
 
     /// Creates a `SecurityIdentifier` from a byte slice.
@@ -628,6 +523,7 @@ pub mod test {
         use core::ptr;
         use core::slice;
 
+        use crate::GetCurrentSid as _;
         use crate::SecurityIdentifier;
 
         use super::arb_security_identifier;

@@ -12,7 +12,7 @@
 #[cfg(all(windows, feature = "std"))]
 mod windows;
 #[cfg(all(windows, feature = "std"))]
-pub use windows::GetCurrentSid;
+pub use windows::sid_lookup;
 
 use crate::InvalidSidFormat;
 
@@ -20,7 +20,7 @@ pub use parsing::MAX_SUBAUTHORITY_COUNT;
 pub use parsing::MIN_SUBAUTHORITY_COUNT;
 
 #[cfg(not(has_ptr_metadata))]
-use crate::polyfils_ptr::from_raw_parts;
+use crate::polyfills_ptr::from_raw_parts;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts;
 
@@ -98,7 +98,7 @@ impl Sid {
     pub const fn as_binary(&self) -> &[u8] {
         // Safety:
         // - The instance must be fully initialized and backed by a valid allocation large enough
-        //   for the computed layout (see `get_current_min_layoot`).
+        //   for the computed layout (see `get_current_min_layout`).
         // - The lifetime of the returned slice is tied to `&self`.
         unsafe {
             slice::from_raw_parts(

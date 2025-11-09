@@ -1,7 +1,14 @@
-use crate::Sid;
-#[cfg(all(windows, feature = "std"))]
-use crate::TokenError;
-
+use crate::sid::Sid;
+mod token_error;
+use core::mem::MaybeUninit;
+use core::ptr;
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+pub use token_error::TokenError;
+use windows_sys::Win32::{
+    Foundation::GetLastError,
+    Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser},
+    System::Threading::{GetCurrentProcess, OpenProcessToken},
+};
 pub trait GetCurrentSid: Sized
 where
     for<'a> &'a Sid: Into<Self>,
@@ -16,25 +23,12 @@ where
     /// # #[cfg(windows)]
     /// # {
     /// # use win_security_identifier::SecurityIdentifier;
+    /// use win_security_identifier::GetCurrentSid;
     /// let sid = SecurityIdentifier::get_current_user_sid().unwrap();
     /// println!("{}", sid);
     /// # }
     /// ```
-    #[cfg(all(windows, feature = "std"))]
-    #[allow(
-        clippy::missing_inline_in_public_items,
-        reason = "Too complex to inline"
-    )]
     fn get_current_user_sid() -> Result<Self, TokenError> {
-        use core::mem::MaybeUninit;
-        use core::ptr;
-        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
-        use windows_sys::Win32::{
-            Foundation::GetLastError,
-            Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser},
-            System::Threading::{GetCurrentProcess, OpenProcessToken},
-        };
-
         // --- Open the process token ------------------------------------------------
         let mut raw_handle_mu: MaybeUninit<RawHandle> = MaybeUninit::uninit();
 

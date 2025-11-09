@@ -19,3 +19,4 @@ pub const fn metadata(sid: *const Sid) -> usize {
         slice.len()
     }
 }
+

@@ -9,9 +9,6 @@
 //! - [`ConstSid`]: a const-friendly, fixed-size SID (`N` sub-authorities) that
 //!   can be embedded in static data and converted to a reference of [`Sid`].
 //! - [`SidIdentifierAuthority`]: the 6-byte authority component of SIDs.
-//! - (Windows) [`SidType`]: Rust enum mirroring `SID_NAME_USE` for account lookup.
-//! - (Windows) [`DomainAndName`] and `SidLookupResult`: helpers for
-//!   `LookupAccountSidW` to resolve `DOMAIN\Name`.
 //!
 //! ## Overview
 //! - **Zero-copy access** to the binary representation via [`Sid::as_binary`].
@@ -32,14 +29,6 @@
 //! `sub_authority_count` 32-bit sub-authorities. Use [`Sid::get_current_min_layout`]
 //! to compute the minimal [`Layout`] for a given instance. [`SecurityIdentifier`]
 //! uses this to allocate correctly.
-//!
-//! ## Windows-only functionality
-//! *Available behind `cfg(windows)`.*
-//!
-//! - [`GetCurrentSid::get_current_user_sid`] reads the current process token
-//!   and returns the user SID.
-//! - `sid_lookup` module: resolves a [`Sid`] to `DOMAIN\Name` and a [`SidType`]
-//!   (`SID_NAME_USE`) using `LookupAccountSidW`.
 //!
 //! ## Examples
 //! ### Create a SID from parts
@@ -74,6 +63,7 @@
 //! # #[cfg(windows)]
 //! # {
 //! # use win_security_identifier::{SecurityIdentifier};
+//! use win_security_identifier::GetCurrentSid;
 //! let sid = SecurityIdentifier::get_current_user_sid().unwrap();
 //! println!("Current user SID: {sid}");
 //! # }
@@ -83,7 +73,8 @@
 //! ```no_run
 //! # #[cfg(windows)]
 //! # {
-//! use win_security_identifier::{SecurityIdentifier, SidType};
+//! use win_security_identifier::{SecurityIdentifier};
+//! use win_security_identifier::sid_lookup::SidType;
 //! // ... obtain a `SecurityIdentifier` or `&Sid` named `sid`
 //! # use win_security_identifier::{SidIdentifierAuthority, ConstSid};
 //! # let sid = win_security_identifier::SecurityIdentifier::from(ConstSid::<2>::new(
@@ -99,28 +90,28 @@
 //!
 //!
 //! ## No-std?
-//! Not supported. The crate relies on allocation and Windows FFI (on Windows).
+//! Mostly supported; the main exception is the Windows interop (on Windows).
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(needs_ptr_metadata_feature, feature(ptr_metadata))]
 #![cfg_attr(needs_layout_for_ptr_feature, feature(layout_for_ptr))]
 #[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
 
+#[cfg(all(windows, feature = "std"))]
+pub use ext::{GetCurrentSid, TokenError};
 #[cfg(feature = "alloc")]
 pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]
-pub use security_identifier::TokenError;
-#[cfg(all(windows, feature = "std"))]
-pub use sid::GetCurrentSid;
-pub use sid::Sid;
+pub use sid::sid_lookup;
 #[cfg(doc)]
 pub use std::alloc::Layout;
+mod ext;
 
 #[cfg(not(has_ptr_metadata))]
-pub(crate) mod polyfils_ptr;
+pub(crate) mod polyfills_ptr;
 mod sid_size_info;
 #[cfg(feature = "macro")]
 pub use sid_macro::sid;
@@ -137,49 +128,28 @@ pub(crate) use security_identifier::test::arb_security_identifier;
 /// See also: [`Sid::identifier_authority`], [`ConstSid::identifier_authority`].
 pub use sid_identifier_authority::SidIdentifierAuthority;
 
+pub use sid::Sid;
+
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use sid_identifier_authority::test::arb_identifier_authority;
 
 mod const_sid;
 #[doc(hidden)]
-pub mod internal;
+pub(crate) mod internal;
 
 /// Const-friendly fixed-size SID (`N` sub-authorities).
 ///
 /// See [`ConstSid`] for invariants and examples.
 pub use const_sid::ConstSid;
-#[cfg(feature = "std")]
-pub mod domain_and_name;
-
-#[cfg(all(windows, feature = "std"))]
-mod sid_lookup;
-
-/// Pair `DOMAIN\Name` used when resolving a [`Sid`].
-///
-/// Constructed by Windows account lookup helpers on success.
-#[cfg(feature = "std")]
-pub use domain_and_name::DomainAndName;
-
-#[cfg_attr(docsrs, doc(cfg(all(windows, feature = "std"))))]
-#[cfg(all(windows, feature = "std"))]
-pub use sid_lookup::SidLookupResult;
-
-#[cfg(windows)]
-mod sid_type;
 
 pub use parsing::InvalidSidFormat;
-#[cfg(windows)]
-/// Rust representation of `SID_NAME_USE` (Windows).
-///
-/// Useful to interpret results of `LookupAccountSidW`.
-pub use sid_type::SidType;
 
 /// Internal utilities for validation and layout calculations.
 pub(crate) mod utils;
 
 #[cfg(feature = "serde")]
 mod serde_impl;
-pub mod stack_sid;
+mod stack_sid;
 pub mod well_known;
 pub use stack_sid::StackSid;
