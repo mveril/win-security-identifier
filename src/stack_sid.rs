@@ -146,12 +146,6 @@ impl StackSid {
             pub const fn get_sub_authorities(&self) -> &[u32];
         }
     }
-
-    delegate! {
-        to self.as_sid_mut() {
-            pub fn get_sub_authorities_mut(&mut self) -> &mut [u32];
-        }
-    }
 }
 
 impl<'a> TryFrom<&'a [u8]> for StackSid {
