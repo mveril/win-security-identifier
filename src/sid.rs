@@ -168,30 +168,6 @@ impl Sid {
             )
         }
     }
-    /// Returns mutable slice of sub-authorities (`[u32]`) with length `sub_authority_count`.
-    ///
-    /// # Notes
-    /// This is a read-only view. Mutation should be performed through higher-level safe APIs
-    /// that maintain invariants.
-    ///
-    /// # Examples
-    /// ```rust
-    /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
-    /// let const_sid = ConstSid::<1>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [1]);
-    /// let sid = const_sid.as_sid();
-    /// let subs = sid.get_sub_authorities();
-    /// assert_eq!(subs, &[1]);
-    /// ```
-    #[inline]
-    pub const fn get_sub_authorities_mut(&mut self) -> &mut [u32] {
-        // Safety: self is valid and fully initialized.
-        unsafe {
-            slice::from_raw_parts_mut(
-                self.sub_authority.as_mut_ptr(),
-                self.sub_authority_count as usize,
-            )
-        }
-    }
 
     /// Computes the minimal `Layout` (size + align) needed for **this** instance
     /// given its current `sub_authority_count`.
