@@ -15,7 +15,7 @@ use delegate::delegate;
 use parsing::{self, InvalidSidFormat};
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct StackSid {
     /// The SID revision value, generally 1.
     pub revision: u8,
@@ -143,8 +143,33 @@ impl StackSid {
     delegate! {
         to self.as_sid() {
             #[must_use]
+            #[inline]
             pub const fn get_sub_authorities(&self) -> &[u32];
+            #[must_use]
+            #[inline]
+            pub const fn as_binary(&self) -> &[u8];
         }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
+        let sid = Sid::from_bytes(bytes)?;
+        Ok(sid.into())
+    }
+}
+
+impl AsRef<Sid> for StackSid {
+    #[inline]
+    fn as_ref(&self) -> &Sid {
+        self.as_sid()
+    }
+}
+
+impl AsRef<[u8]> for StackSid {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_binary()
     }
 }
 
@@ -153,8 +178,7 @@ impl<'a> TryFrom<&'a [u8]> for StackSid {
 
     #[inline]
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        let sid: &Sid = value.try_into()?;
-        Ok(sid.into())
+        Self::from_bytes(value)
     }
 }
 
@@ -162,7 +186,17 @@ impl From<&Sid> for StackSid {
     #[inline]
     fn from(value: &Sid) -> Self {
         // SAFETY: As value is a valid Sid reference, its binary representation is valid.
-        unsafe { Self::try_from(value.as_binary()).unwrap_unchecked() }
+        unsafe {
+            let mut uninit = MaybeUninit::<StackSid>::uninit();
+            let mem = uninit.as_mut_ptr().cast::<u8>();
+            unsafe {
+                mem.copy_from_nonoverlapping(
+                    ptr::from_ref(value).cast(),
+                    value.get_current_min_layout().size(),
+                );
+                uninit.assume_init()
+            }
+        }
     }
 }
 

@@ -2,6 +2,7 @@ pub use crate::InvalidSidFormat;
 use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
+use crate::StackSid;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
@@ -406,6 +407,20 @@ impl PartialEq<SecurityIdentifier> for Sid {
     #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
         self == other.as_ref()
+    }
+}
+
+impl PartialEq<StackSid> for SecurityIdentifier {
+    #[inline]
+    fn eq(&self, other: &StackSid) -> bool {
+        self == other.as_sid()
+    }
+}
+
+impl PartialEq<SecurityIdentifier> for StackSid {
+    #[inline]
+    fn eq(&self, other: &SecurityIdentifier) -> bool {
+        self == other.as_sid()
     }
 }
 

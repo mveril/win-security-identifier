@@ -101,9 +101,11 @@ impl Sid {
         //   for the computed layout (see `get_current_min_layout`).
         // - The lifetime of the returned slice is tied to `&self`.
         unsafe {
+            let layout = self.get_current_min_layout();
+            let len = layout.size();
             slice::from_raw_parts(
                 core::ptr::from_ref(self).cast::<u8>(),
-                self.get_current_min_layout().size(),
+                len,
             )
         }
     }
@@ -185,6 +187,41 @@ impl Sid {
             unreachable!()
         }
     }
+
+    /// Attempts to construct a `&Sid` from a raw byte slice.
+    /// Returns an error if the byte slice is not a valid SID.
+    #[inline]
+    pub fn from_bytes(value: &[u8]) -> Result<&Sid, InvalidSidFormat> {
+        let min_size = SidSizeInfo::MIN.get_layout().size();
+        if value.len() < min_size {
+            return Err(InvalidSidFormat);
+        }
+
+        let count_offset = offset_of!(Sid, sub_authority_count);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "We know the count_offset is in the bound (was checked by minimum size)"
+        )]
+        let count = value[count_offset];
+
+        if !sub_authority_size_guard(count as usize) {
+            return Err(InvalidSidFormat);
+        }
+
+        let size = SidSizeInfo::from_count(count).map_or_else(
+            || {
+                unreachable!();
+            },
+            |info| info.get_layout().size(),
+        );
+        if value.len() != size {
+            return Err(InvalidSidFormat);
+        }
+        Ok(
+            // Safety: value length has been validated against the expected layout size.
+            unsafe { Sid::from_raw_internal(value.as_ptr().cast()) },
+        )
+    }
 }
 
 // --- Standard trait impls intentionally left undocumented (per your request) ---
@@ -231,40 +268,12 @@ impl Hash for Sid {
     }
 }
 
-impl TryFrom<&[u8]> for &Sid {
+impl<'a> TryFrom<&'a [u8]> for &'a Sid {
     type Error = InvalidSidFormat;
 
     #[inline]
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let min_size = SidSizeInfo::MIN.get_layout().size();
-        if value.len() < min_size {
-            return Err(InvalidSidFormat);
-        }
-
-        let count_offset = offset_of!(Sid, sub_authority_count);
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "We know the count_offset is in the bound (was checked by minimum size)"
-        )]
-        let count = value[count_offset];
-
-        if !sub_authority_size_guard(count as usize) {
-            return Err(InvalidSidFormat);
-        }
-
-        let size = SidSizeInfo::from_count(count).map_or_else(
-            || {
-                unreachable!();
-            },
-            |info| info.get_layout().size(),
-        );
-        if value.len() != size {
-            return Err(InvalidSidFormat);
-        }
-        Ok(
-            // Safety: value length has been validated against the expected layout size.
-            unsafe { Sid::from_raw_internal(value.as_ptr().cast()) },
-        )
+    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+        Sid::from_bytes(value)
     }
 }
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
