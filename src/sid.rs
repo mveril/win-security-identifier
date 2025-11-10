@@ -103,10 +103,7 @@ impl Sid {
         unsafe {
             let layout = self.get_current_min_layout();
             let len = layout.size();
-            slice::from_raw_parts(
-                core::ptr::from_ref(self).cast::<u8>(),
-                len,
-            )
+            slice::from_raw_parts(core::ptr::from_ref(self).cast::<u8>(), len)
         }
     }
 
