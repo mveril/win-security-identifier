@@ -176,38 +176,6 @@ where
     }
 }
 
-#[cfg(test)]
-mod test {
-    const SID: ConstSid<3> =
-        ConstSid::new(1, crate::SidIdentifierAuthority::NT_AUTHORITY, [5, 32, 544]);
-    const BYTES: &[u8] = SID.as_sid().as_binary();
-
-    use crate::ConstSid;
-    use serde_test::{self, Configure, Token};
-    #[test]
-    fn test_binary_const() {
-        serde_test::assert_ser_tokens(&SID.as_sid().compact(), &[Token::Bytes(BYTES)]);
-    }
-
-    #[test]
-    fn test_human_const() {
-        serde_test::assert_ser_tokens(&SID.as_sid().readable(), &[Token::String("S-1-5-5-32-544")]);
-    }
-
-    #[cfg(feature = "alloc")]
-    #[test]
-    fn test_binary_owned() {
-        serde_test::assert_ser_tokens(
-            &SID.as_sid().to_owned().readable(),
-            &[Token::String("S-1-5-5-32-544")],
-        );
-        serde_test::assert_tokens(
-            &SID.as_sid().to_owned().readable(),
-            &[Token::String("S-1-5-5-32-544")],
-        );
-    }
-}
-
 #[cfg(all(windows, feature = "std"))]
 impl<'de> Deserialize<'de> for DomainAndName {
     #[inline]
@@ -245,5 +213,37 @@ impl Serialize for DomainAndName {
         S: Serializer,
     {
         serializer.collect_str(self)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    const SID: ConstSid<3> =
+        ConstSid::new(1, crate::SidIdentifierAuthority::NT_AUTHORITY, [5, 32, 544]);
+    const BYTES: &[u8] = SID.as_sid().as_binary();
+
+    use crate::ConstSid;
+    use serde_test::{self, Configure, Token};
+    #[test]
+    fn test_binary_const() {
+        serde_test::assert_ser_tokens(&SID.as_sid().compact(), &[Token::Bytes(BYTES)]);
+    }
+
+    #[test]
+    fn test_human_const() {
+        serde_test::assert_ser_tokens(&SID.as_sid().readable(), &[Token::String("S-1-5-5-32-544")]);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn test_binary_owned() {
+        serde_test::assert_ser_tokens(
+            &SID.as_sid().to_owned().readable(),
+            &[Token::String("S-1-5-5-32-544")],
+        );
+        serde_test::assert_tokens(
+            &SID.as_sid().to_owned().readable(),
+            &[Token::String("S-1-5-5-32-544")],
+        );
     }
 }
