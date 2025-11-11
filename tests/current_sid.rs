@@ -1,11 +1,16 @@
 // Windows-only integration test that fetches SID + DOMAIN\Name with canonical casing
 #![cfg(windows)]
 #![cfg(feature = "std")]
+#![cfg(feature = "serde")]
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 #![allow(clippy::unwrap_used, reason = "Unwrap is not an issue in tests")]
+#![allow(clippy::std_instead_of_core)]
 
 use serde::Deserialize;
-use std::process::{Command, Stdio};
+use std::{
+    fmt::Debug,
+    process::{Command, Stdio},
+};
 use win_security_identifier::{
     GetCurrentSid, SecurityIdentifier, Sid, StackSid,
     sid_lookup::{DomainAndName, SidType},
@@ -13,8 +18,8 @@ use win_security_identifier::{
 
 #[derive(Debug, Deserialize)]
 struct PsUser {
-    sid: String,
-    account: String,
+    sid: StackSid,
+    account: DomainAndName,
 }
 
 fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
@@ -43,7 +48,7 @@ fn current_user_sid_and_account_stack() {
 
 fn current_user_sid_and_account<T>()
 where
-    T: Sized,
+    T: Sized + AsRef<Sid> + PartialEq<StackSid> + Debug,
     for<'a> &'a Sid: Into<T>,
 {
     const PS_SCRIPT: &str = include_str!("assets/get_sid_account.ps1");
@@ -68,23 +73,14 @@ where
     let user: PsUser =
         serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell");
 
-    let expected_domain_name = user
-        .account
-        .parse::<DomainAndName>()
-        .expect("Failed to parse Account into DomainAndName");
+    let sid = T::get_current_user_sid().expect("Failed to get current user SID");
 
-    let sid = SecurityIdentifier::get_current_user_sid().expect("Failed to get current user SID");
+    assert_eq!(sid, user.sid, "SID does not match expected value");
 
-    assert_eq!(
-        sid.to_string(),
-        user.sid,
-        "SID does not match expected value"
-    );
-
-    let lookup = sid.lookup_local_sid().unwrap().unwrap();
+    let lookup = sid.as_ref().lookup_local_sid().unwrap().unwrap();
 
     assert_eq!(
-        lookup.domain_name, expected_domain_name,
+        lookup.domain_name, user.account,
         "Domain and name do not match expected value"
     );
 
