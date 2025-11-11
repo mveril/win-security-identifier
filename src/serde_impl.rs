@@ -39,32 +39,6 @@ impl Serialize for Sid {
     }
 }
 
-impl<'de> Deserialize<'de> for &'de Sid {
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct SidVisitor;
-
-        impl<'de> de::Visitor<'de> for SidVisitor {
-            type Value = &'de Sid;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("A Windows SID as raw binary")
-            }
-
-            fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Sid::from_bytes(v).map_err(|_| E::invalid_value(de::Unexpected::Bytes(v), &self))
-            }
-        }
-        deserializer.deserialize_bytes(SidVisitor)
-    }
-}
-
 #[cfg(feature = "alloc")]
 impl Serialize for SecurityIdentifier {
     #[inline]

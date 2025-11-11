@@ -6,12 +6,14 @@ use crate::StackSid;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
+use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
 use ::core::alloc::Layout;
 #[cfg(feature = "std")]
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
+use core::mem::offset_of;
 use core::ops::DerefMut;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
@@ -200,9 +202,29 @@ impl SecurityIdentifier {
     /// assert!(sid.unwrap().to_string() == "S-1-5-32-544")
     /// ```
     #[inline]
-    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, InvalidSidFormat> {
-        let bytes = bytes.as_ref();
-        bytes.try_into()
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
+        validate_sid_bytes_unaligned(bytes)?;
+        Ok(unsafe { Self::from_bytes_unchecked(bytes) })
+    }
+
+    /// Builds a `SecurityIdentifier` from raw bytes without validation.
+    ///
+    /// # Safety
+    /// The caller must ensure `bytes` encodes a valid SID, with a length that
+    /// matches the embedded `sub_authority_count` and the expected binary
+    /// layout. Passing invalid bytes results in undefined behavior.
+    #[inline]
+    unsafe fn from_bytes_unchecked(bytes: &[u8]) -> Self {
+        let size_info = unsafe {
+            SidSizeInfo::from_count(bytes[offset_of!(Sid, sub_authority_count)]).unwrap_unchecked()
+        };
+        // Safety: The uninit SID is properly initialized by copying from `self` after.
+        let mut instance = unsafe { Self::uninit(size_info) };
+        // Safety: We copy all the bytes from a valid SID of the same size.
+        unsafe {
+            instance.as_binary_mut().copy_from_slice(bytes);
+        }
+        instance
     }
 
     /// Returns a reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
@@ -223,6 +245,7 @@ impl SecurityIdentifier {
     /// ```
     #[inline]
     #[must_use]
+    /// Returns an immutable reference to the inner [`Sid`].
     pub const fn as_sid(&self) -> &Sid {
         // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_ref() }
@@ -257,6 +280,7 @@ impl SecurityIdentifier {
     /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
     /// ```
     #[inline]
+    /// Returns a mutable reference to the inner [`Sid`].
     pub const fn as_sid_mut(&mut self) -> &mut Sid {
         // SAFETY: self.sid is guaranteed to be valid.
         unsafe { self.sid.as_mut() }
@@ -268,8 +292,7 @@ impl TryFrom<&[u8]> for SecurityIdentifier {
 
     #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let sid: &Sid = value.try_into()?;
-        Ok(sid.to_owned())
+        Self::from_bytes(value)
     }
 }
 
@@ -305,15 +328,7 @@ impl ToOwned for Sid {
     fn to_owned(&self) -> Self::Owned {
         let binary = self.as_binary();
         // Safety: sub_authority_count is known to be valid because `self` is valid.
-        let size_info =
-            unsafe { SidSizeInfo::from_count(self.sub_authority_count).unwrap_unchecked() };
-        // Safety: The uninit SID is properly initialized by copying from `self` after.
-        let mut instance = unsafe { Self::Owned::uninit(size_info) };
-        // Safety: We copy all the bytes from a valid SID of the same size.
-        unsafe {
-            instance.as_binary_mut().copy_from_slice(binary);
-        }
-        instance
+        unsafe { Self::Owned::from_bytes_unchecked(binary) }
     }
 }
 
