@@ -15,7 +15,7 @@ use delegate::delegate;
 use parsing::{self, InvalidSidFormat};
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct StackSid {
     /// The SID revision value, generally 1.
     pub revision: u8,
@@ -143,8 +143,56 @@ impl StackSid {
     delegate! {
         to self.as_sid() {
             #[must_use]
+            #[inline]
             pub const fn get_sub_authorities(&self) -> &[u32];
+            #[must_use]
+            #[inline]
+            pub const fn as_binary(&self) -> &[u8];
         }
+    }
+
+    /// Creates a [`StackSid`] from its binary representation.
+    ///
+    /// `bytes` must contain a serialized Windows SID in the standard layout
+    /// (revision, identifier authority, sub-authorities).
+    ///
+    /// # Errors
+    /// Returns `InvalidSidFormat` if the byte slice is not a valid SID
+    /// (e.g., invalid length, revision, or sub-authority count).
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{StackSid, SidIdentifierAuthority};
+    /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
+    /// let bytes: [u8; 12] = [
+    ///     1, // revision
+    ///     1, // sub_authority_count
+    ///     0, 0, 0, 0, 0, 5, // identifier_authority (NT AUTHORITY)
+    ///     20, 0, 0, 0, // sub_authority[0]
+    /// ];
+    /// let sid = StackSid::from_bytes(&bytes).expect("valid SID parts");
+    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
+    /// assert_eq!(sid.get_sub_authorities(), [20u32]);
+    /// ```
+    #[inline]
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
+        let sid = Sid::from_bytes(bytes)?;
+        Ok(sid.into())
+    }
+}
+
+impl AsRef<Sid> for StackSid {
+    #[inline]
+    fn as_ref(&self) -> &Sid {
+        self.as_sid()
+    }
+}
+
+impl AsRef<[u8]> for StackSid {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_binary()
     }
 }
 
@@ -153,16 +201,24 @@ impl<'a> TryFrom<&'a [u8]> for StackSid {
 
     #[inline]
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        let sid: &Sid = value.try_into()?;
-        Ok(sid.into())
+        Self::from_bytes(value)
     }
 }
 
 impl From<&Sid> for StackSid {
     #[inline]
     fn from(value: &Sid) -> Self {
-        // SAFETY: As value is a valid Sid reference, its binary representation is valid.
-        unsafe { Self::try_from(value.as_binary()).unwrap_unchecked() }
+        let mut uninit = MaybeUninit::<Self>::uninit();
+        let mem = uninit.as_mut_ptr().cast::<u8>();
+        // SAFETY: We know result is bigger than input
+        unsafe {
+            mem.copy_from_nonoverlapping(
+                ptr::from_ref(value).cast(),
+                value.get_current_min_layout().size(),
+            );
+        }
+        // SAFETY: Initialized by the previous step
+        unsafe { uninit.assume_init() }
     }
 }
 

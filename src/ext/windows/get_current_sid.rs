@@ -104,7 +104,7 @@ where
         // SAFETY: TOKEN_USER is a plain data struct and can be read from a byte buffer.
         let sid_ptr = unsafe { ptr::addr_of!((*token_user_ptr).User.Sid) };
         // SAFETY: TOKEN_USER contains a PSID which is a pointer to a valid SID.
-        let raw_sid = unsafe { ptr::read_unaligned(sid_ptr) };
+        let raw_sid: *mut core::ffi::c_void = unsafe { ptr::read_unaligned(sid_ptr) };
         // SAFETY: get the user Sid from the raw pointer structure.
         let sid = unsafe { Sid::from_raw(raw_sid) };
         Ok(sid.into())
