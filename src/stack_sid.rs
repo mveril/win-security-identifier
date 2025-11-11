@@ -151,8 +151,32 @@ impl StackSid {
         }
     }
 
+    /// Creates a `StackSid` from its binary representation.
+    ///
+    /// `bytes` must contain a serialized Windows SID in the standard layout
+    /// (revision, identifier authority, sub-authorities).
+    ///
+    /// # Errors
+    /// Returns `InvalidSidFormat` if the byte slice is not a valid SID
+    /// (e.g., invalid length, revision, or sub-authority count).
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{StackSid, SidIdentifierAuthority};
+    /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
+    /// let bytes: [u8; 12] = [
+    ///     1, // revision
+    ///     1, // sub_authority_count
+    ///     0, 0, 0, 0, 0, 5, // identifier_authority (NT AUTHORITY)
+    ///     20, 0, 0, 0, // sub_authority[0]
+    /// ];
+    /// let sid = StackSid::from_bytes(&bytes).expect("valid SID parts");
+    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
+    /// assert_eq!(sid.get_sub_authorities(), [20u32]);
+    /// ```
+
     #[inline]
-    #[must_use]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
         let sid = Sid::from_bytes(bytes)?;
         Ok(sid.into())
@@ -185,18 +209,17 @@ impl<'a> TryFrom<&'a [u8]> for StackSid {
 impl From<&Sid> for StackSid {
     #[inline]
     fn from(value: &Sid) -> Self {
-        // SAFETY: As value is a valid Sid reference, its binary representation is valid.
+        let mut uninit = MaybeUninit::<Self>::uninit();
+        let mem = uninit.as_mut_ptr().cast::<u8>();
+        // SAFETY: We know result is bigger than input
         unsafe {
-            let mut uninit = MaybeUninit::<StackSid>::uninit();
-            let mem = uninit.as_mut_ptr().cast::<u8>();
-            unsafe {
-                mem.copy_from_nonoverlapping(
-                    ptr::from_ref(value).cast(),
-                    value.get_current_min_layout().size(),
-                );
-                uninit.assume_init()
-            }
+            mem.copy_from_nonoverlapping(
+                ptr::from_ref(value).cast(),
+                value.get_current_min_layout().size(),
+            );
         }
+        // SAFETY: Initialized by the previous step
+        unsafe { uninit.assume_init() }
     }
 }
 

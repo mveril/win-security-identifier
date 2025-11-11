@@ -187,14 +187,30 @@ impl Sid {
 
     /// Attempts to construct a `&Sid` from a raw byte slice.
     /// Returns an error if the byte slice is not a valid SID.
+    /// # Errors
+    /// Invalid Sid format if the buffer is not an [Sid]
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{Sid, SidIdentifierAuthority};
+    /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
+    /// let bytes: [u8; 12] = [
+    ///     1, // revision
+    ///     1, // sub_authority_count
+    ///     0, 0, 0, 0, 0, 5, // identifier_authority (NT AUTHORITY)
+    ///     20, 0, 0, 0, // sub_authority[0]
+    /// ];
+    /// let sid = Sid::from_bytes(&bytes).expect("valid SID parts");
+    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
+    /// assert_eq!(sid.get_sub_authorities(), [20u32]);
     #[inline]
-    pub fn from_bytes(value: &[u8]) -> Result<&Sid, InvalidSidFormat> {
+    pub fn from_bytes(value: &[u8]) -> Result<&Self, InvalidSidFormat> {
         let min_size = SidSizeInfo::MIN.get_layout().size();
         if value.len() < min_size {
             return Err(InvalidSidFormat);
         }
 
-        let count_offset = offset_of!(Sid, sub_authority_count);
+        let count_offset = offset_of!(Self, sub_authority_count);
         #[expect(
             clippy::indexing_slicing,
             reason = "We know the count_offset is in the bound (was checked by minimum size)"
@@ -216,7 +232,7 @@ impl Sid {
         }
         Ok(
             // Safety: value length has been validated against the expected layout size.
-            unsafe { Sid::from_raw_internal(value.as_ptr().cast()) },
+            unsafe { Self::from_raw_internal(value.as_ptr().cast()) },
         )
     }
 }

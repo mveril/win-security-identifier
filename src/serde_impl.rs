@@ -43,6 +43,7 @@ impl Serialize for Sid {
 }
 
 impl<'de> Deserialize<'de> for &'de Sid {
+    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -82,28 +83,27 @@ impl Serialize for SecurityIdentifier {
 fn deserialize_sid_like<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
-    T: FromStr,
-    for<'a> T: TryFrom<&'a [u8]>,
+    for<'a> T: FromStr + TryFrom<&'a [u8]>,
     <T as FromStr>::Err: core::fmt::Display,
     for<'a> <T as TryFrom<&'a [u8]>>::Error: core::fmt::Display,
 {
+    #[derive(Clone, Copy)]
     struct Visitor<T> {
         _marker: PhantomData<T>,
     }
 
     impl<T> Default for Visitor<T> {
         fn default() -> Self {
-            Visitor {
+            Self {
                 _marker: PhantomData,
             }
         }
     }
-    {}
 
-    impl<'de, T> de::Visitor<'de> for Visitor<T>
+    impl<T> de::Visitor<'_> for Visitor<T>
     where
-        T: FromStr,
-        for<'a> T: TryFrom<&'a [u8]>,
+        for<'a> T: FromStr + TryFrom<&'a [u8]>,
+        for<'a> T:,
         <T as FromStr>::Err: core::fmt::Display,
         for<'a> <T as TryFrom<&'a [u8]>>::Error: core::fmt::Display,
     {
@@ -213,6 +213,7 @@ mod test {
 
 #[cfg(all(windows, feature = "std"))]
 impl<'de> Deserialize<'de> for DomainAndName {
+    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -241,6 +242,7 @@ impl<'de> Deserialize<'de> for DomainAndName {
 
 #[cfg(all(windows, feature = "std"))]
 impl Serialize for DomainAndName {
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
