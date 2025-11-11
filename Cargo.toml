@@ -31,7 +31,7 @@ repository.workspace = true
 
 
 [features]
-default = ["std", "serde"]
+default = ["std"]
 std = ["alloc", "parsing/std", "dep:smallvec","dep:num_enum","dep:widestring", "serde?/std", "thiserror/std", "dep:windows-sys" ]
 alloc = ["serde?/alloc"]
 macro = ["dep:sid_macro"]
