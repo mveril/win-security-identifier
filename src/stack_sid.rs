@@ -151,7 +151,7 @@ impl StackSid {
         }
     }
 
-    /// Creates a `StackSid` from its binary representation.
+    /// Creates a [`StackSid`] from its binary representation.
     ///
     /// `bytes` must contain a serialized Windows SID in the standard layout
     /// (revision, identifier authority, sub-authorities).
@@ -175,7 +175,6 @@ impl StackSid {
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [20u32]);
     /// ```
-
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
         let sid = Sid::from_bytes(bytes)?;
