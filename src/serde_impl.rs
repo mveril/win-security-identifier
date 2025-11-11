@@ -3,14 +3,11 @@ use crate::sid_lookup::DomainAndName;
 #[cfg(not(feature = "alloc"))]
 use arrayvec::ArrayString;
 use cfg_if::cfg_if;
-#[cfg(feature = "alloc")]
 use core::fmt;
 #[cfg(not(feature = "alloc"))]
 use core::fmt::Write;
 use core::marker::PhantomData;
-#[cfg(feature = "alloc")]
 use core::str::FromStr;
-#[cfg(feature = "alloc")]
 use serde::{Deserialize, Deserializer, de};
 use serde::{Serialize, Serializer, ser};
 
