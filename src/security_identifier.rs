@@ -204,6 +204,7 @@ impl SecurityIdentifier {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
         validate_sid_bytes_unaligned(bytes)?;
+        // SAFETY: All check was done before
         Ok(unsafe { Self::from_bytes_unchecked(bytes) })
     }
 
@@ -215,7 +216,12 @@ impl SecurityIdentifier {
     /// layout. Passing invalid bytes results in undefined behavior.
     #[inline]
     unsafe fn from_bytes_unchecked(bytes: &[u8]) -> Self {
+        // SAFETY: All safety criteron are described in the doc
         let size_info = unsafe {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "It's the unchecked version safety is precised in the doc."
+            )]
             SidSizeInfo::from_count(bytes[offset_of!(Sid, sub_authority_count)]).unwrap_unchecked()
         };
         // Safety: The uninit SID is properly initialized by copying from `self` after.
