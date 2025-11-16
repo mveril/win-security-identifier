@@ -5,7 +5,7 @@ use core::hash::Hash;
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
-use crate::utils::sub_authority_size_guard;
+use crate::utils::{sub_authority_size_guard, validate_sid_bytes_unaligned};
 use crate::{Sid, SidIdentifierAuthority};
 use core::fmt::Display;
 use core::mem::MaybeUninit;
@@ -176,9 +176,18 @@ impl StackSid {
     /// assert_eq!(sid.get_sub_authorities(), [20u32]);
     /// ```
     #[inline]
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
-        let sid = Sid::from_bytes(bytes)?;
-        Ok(sid.into())
+    pub const fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
+        if let Err(err) = validate_sid_bytes_unaligned(bytes) {
+            return Err(err);
+        }
+        let mut sid = MaybeUninit::<Self>::uninit();
+        // SAFETY: `StackSid` has max size of `Sid`
+        unsafe {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), sid.as_mut_ptr().cast::<u8>(), bytes.len());
+        }
+        // SAFETY: Initialized by previous
+        let sid = unsafe { sid.assume_init() };
+        Ok(sid)
     }
 }
 
