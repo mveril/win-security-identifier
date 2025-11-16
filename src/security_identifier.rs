@@ -435,6 +435,20 @@ impl PartialEq for SecurityIdentifier {
     }
 }
 
+impl From<Box<Sid>> for SecurityIdentifier {
+    #[inline]
+    fn from(value: Box<Sid>) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl From<SecurityIdentifier> for Box<Sid> {
+    #[inline]
+    fn from(value: SecurityIdentifier) -> Self {
+        value.inner
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
@@ -594,19 +608,5 @@ pub mod test {
             };
             assert_eq!(result, None, "SID is not valid: {result:?}");
         }
-    }
-}
-
-impl From<Box<Sid>> for SecurityIdentifier {
-    #[inline]
-    fn from(value: Box<Sid>) -> Self {
-        Self { inner: value }
-    }
-}
-
-impl From<SecurityIdentifier> for Box<Sid> {
-    #[inline]
-    fn from(value: SecurityIdentifier) -> Self {
-        value.inner
     }
 }
