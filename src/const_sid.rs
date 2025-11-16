@@ -333,7 +333,6 @@ where
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
 mod test {
-    #[cfg(feature = "std")]
     use super::*;
     #[cfg(feature = "std")]
     #[test]
@@ -369,7 +368,7 @@ mod test {
         assert_eq!(sid, expected_sid);
     }
 
-    #[cfg(feature = "alloc")]
+    #[cfg(feature = "std")]
     #[test]
     fn test_display_and_eq() {
         use crate::well_known;
