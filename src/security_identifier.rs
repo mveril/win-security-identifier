@@ -8,7 +8,7 @@ use crate::polyfills_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
-use alloc::{alloc, borrow::ToOwned};
+use ::alloc::{alloc, borrow::ToOwned, boxed::Box};
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::mem::offset_of;
@@ -477,6 +477,7 @@ pub mod test {
 
     proptest! {
         #[test]
+        #[cfg(feature = "std")]
         fn test_sid_properties(security_identifier in arb_security_identifier()) {
             // Hash
             use std::collections::hash_map::DefaultHasher;
@@ -503,6 +504,7 @@ pub mod test {
         }
 
         #[test]
+        #[cfg(feature="std")]
         fn test_securityidentifier_eq_and_hash(a in arb_security_identifier(), b in arb_security_identifier()) {
             // Reflexivity
             prop_assert_eq!(&*a, &*a);
@@ -532,13 +534,14 @@ pub mod test {
         }
 
         #[test]
+        #[cfg(feature="std")]
         fn test_sid_to_string_from_string(sid1 in arb_security_identifier()){
             let sid2: SecurityIdentifier = sid1.to_string().parse().unwrap();
             prop_assert_eq!(sid1, sid2);
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(all(feature = "std", windows))]
     mod windows {
         use core::ptr;
         use core::slice;
