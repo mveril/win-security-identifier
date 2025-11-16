@@ -8,17 +8,16 @@ use crate::polyfills_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
-use ::alloc::{alloc, borrow::Borrow, borrow::ToOwned};
-use ::core::alloc::Layout;
-#[cfg(feature = "std")]
+use ::alloc::{alloc, borrow::ToOwned, boxed::Box};
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::mem::offset_of;
+use core::ops::Deref;
 use core::ops::DerefMut;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
 use core::str::FromStr;
-use core::{ops::Deref, ptr::NonNull};
+use delegate::delegate;
 use parsing::SidComponents;
 #[cfg(feature = "std")]
 use std::{alloc, borrow::ToOwned};
@@ -46,14 +45,13 @@ use std::{alloc, borrow::ToOwned};
 /// println!("{}", sid); // e.g., "S-1-5-32-544"
 /// ```
 pub struct SecurityIdentifier {
-    sid: NonNull<Sid>,
-    layout: Layout,
+    inner: Box<Sid>,
 }
 
 impl Debug for SecurityIdentifier {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&**self, f)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&*self.inner, f)
     }
 }
 
@@ -134,7 +132,7 @@ impl SecurityIdentifier {
         // Safety: The uninit SID will be correctly filled after.
         let mut instance = unsafe { Self::uninit(size_info) };
         // Safety: sid is valid here to be fill.
-        let sid_ref = unsafe { instance.sid.as_mut() };
+        let sid_ref = &mut instance.inner.as_mut();
         sid_ref.revision = revision;
         sid_ref.sub_authority_count = sub_authority_count;
         sid_ref.identifier_authority = identifier_authority;
@@ -161,19 +159,13 @@ impl SecurityIdentifier {
         // SAFETY: `from_raw_parts_mut` builds a fat pointer to `Sid` with the
         // correct metadata (`sub_authority_count` elements in the trailing slice).
 
-        let mut ptr: NonNull<Sid> = unsafe {
-            NonNull::new_unchecked(from_raw_parts_mut(
-                mem_ptr.cast::<()>(),
-                sub_authority_count as usize,
-            ))
-        };
+        let ptr: *mut Sid = from_raw_parts_mut(mem_ptr.cast::<()>(), sub_authority_count as usize);
         // Initialize mandatory header field needed by later methods.
         // SAFETY: `ptr` was initialized just above.
-        unsafe {
-            ptr.as_mut().sub_authority_count = sub_authority_count;
-        }
+        let mut inner = unsafe { Box::from_raw(ptr) };
+        inner.sub_authority_count = sub_authority_count;
 
-        Self { sid: ptr, layout }
+        Self { inner }
     }
 
     /// Creates a `SecurityIdentifier` from a byte slice.
@@ -251,10 +243,8 @@ impl SecurityIdentifier {
     /// ```
     #[inline]
     #[must_use]
-    /// Returns an immutable reference to the inner [`Sid`].
-    pub const fn as_sid(&self) -> &Sid {
-        // SAFETY: self.sid is guaranteed to be valid.
-        unsafe { self.sid.as_ref() }
+    pub fn as_sid(&self) -> &Sid {
+        self.inner.as_ref()
     }
 
     /// Returns a mut reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
@@ -286,10 +276,8 @@ impl SecurityIdentifier {
     /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
     /// ```
     #[inline]
-    /// Returns a mutable reference to the inner [`Sid`].
-    pub const fn as_sid_mut(&mut self) -> &mut Sid {
-        // SAFETY: self.sid is guaranteed to be valid.
-        unsafe { self.sid.as_mut() }
+    pub fn as_sid_mut(&mut self) -> &mut Sid {
+        self.inner.as_mut()
     }
 }
 
@@ -339,10 +327,11 @@ impl ToOwned for Sid {
 }
 
 impl Borrow<Sid> for SecurityIdentifier {
-    #[inline]
-    fn borrow(&self) -> &Sid {
-        // SAFETY: self.sid is guaranteed to be valid.
-        unsafe { self.sid.as_ref() }
+    delegate! {
+        to self.inner {
+            #[inline]
+            fn borrow(&self) -> &Sid;
+        }
     }
 }
 
@@ -350,40 +339,34 @@ impl Deref for SecurityIdentifier {
     type Target = Sid;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        // SAFETY: self.sid is guaranteed to be valid.
-        unsafe { self.sid.as_ref() }
+        &self.inner
     }
 }
 
 impl DerefMut for SecurityIdentifier {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        // SAFETY: self.sid is guaranteed to be valid.
-        unsafe { self.sid.as_mut() }
-    }
+    delegate!(
+        to self.inner {
+            #[inline]
+            fn deref_mut(&mut self) -> &mut Sid;
+        }
+    );
 }
 
 impl AsRef<Sid> for SecurityIdentifier {
-    #[inline]
-    fn as_ref(&self) -> &Sid {
-        // Safety: self.sid is guaranteed to be valid.
-        unsafe { self.sid.as_ref() }
+    delegate! {
+        to self.inner {
+            #[inline]
+            fn as_ref(&self) -> &Sid;
+        }
     }
 }
 
 impl AsMut<Sid> for SecurityIdentifier {
-    #[inline]
-    fn as_mut(&mut self) -> &mut Sid {
-        // SAFETY: self.sid is guaranteed to be valid.
-        unsafe { self.sid.as_mut() }
-    }
-}
-
-impl Drop for SecurityIdentifier {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: The layout is valid and the pointer is properly aligned.
-        unsafe { alloc::dealloc(self.sid.as_ptr().cast::<u8>(), self.layout) };
+    delegate! {
+        to self.inner {
+            #[inline]
+            fn as_mut(&mut self) -> &mut Sid;
+        }
     }
 }
 
@@ -410,8 +393,7 @@ impl Clone for SecurityIdentifier {
 impl Display for SecurityIdentifier {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sid: &Sid = self.as_ref();
-        Display::fmt(sid, f)
+        Display::fmt(&*self.inner, f)
     }
 }
 
@@ -452,6 +434,20 @@ impl PartialEq for SecurityIdentifier {
     }
 }
 
+impl From<Box<Sid>> for SecurityIdentifier {
+    #[inline]
+    fn from(value: Box<Sid>) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl From<SecurityIdentifier> for Box<Sid> {
+    #[inline]
+    fn from(value: SecurityIdentifier) -> Self {
+        value.inner
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
@@ -461,8 +457,6 @@ pub mod test {
     use super::super::sid_identifier_authority::test::arb_identifier_authority;
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfills_ptr::metadata;
-    #[cfg(has_layout_for_ptr)]
-    use core::alloc::Layout;
     use core::hash::Hash;
     use core::hash::Hasher;
     #[cfg(has_ptr_metadata)]
@@ -483,6 +477,7 @@ pub mod test {
 
     proptest! {
         #[test]
+        #[cfg(feature = "std")]
         fn test_sid_properties(security_identifier in arb_security_identifier()) {
             // Hash
             use std::collections::hash_map::DefaultHasher;
@@ -509,6 +504,7 @@ pub mod test {
         }
 
         #[test]
+        #[cfg(feature="std")]
         fn test_securityidentifier_eq_and_hash(a in arb_security_identifier(), b in arb_security_identifier()) {
             // Reflexivity
             prop_assert_eq!(&*a, &*a);
@@ -537,24 +533,15 @@ pub mod test {
             prop_assert_eq!(sid.sub_authority_count as usize, metadata(sid));
         }
 
-        #[cfg(has_layout_for_ptr)]
         #[test]
-        fn test_layout_for_ptr(security_identifier in arb_security_identifier()){
-            // SAFETY: It's just to test this method
-            let raw_layout = unsafe{
-                Layout::for_value_raw(security_identifier.sid.as_ptr())
-            };
-            prop_assert_eq!(security_identifier.layout, raw_layout);
-        }
-
-        #[test]
+        #[cfg(feature="std")]
         fn test_sid_to_string_from_string(sid1 in arb_security_identifier()){
             let sid2: SecurityIdentifier = sid1.to_string().parse().unwrap();
             prop_assert_eq!(sid1, sid2);
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(all(feature = "std", windows))]
     mod windows {
         use core::ptr;
         use core::slice;
