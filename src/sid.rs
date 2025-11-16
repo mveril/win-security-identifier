@@ -15,6 +15,7 @@ mod windows;
 pub use windows::sid_lookup;
 
 use crate::InvalidSidFormat;
+use crate::utils::validate_sid_bytes_unaligned;
 
 pub use parsing::MAX_SUBAUTHORITY_COUNT;
 pub use parsing::MIN_SUBAUTHORITY_COUNT;
@@ -24,13 +25,12 @@ use crate::polyfills_ptr::from_raw_parts;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts;
 
-use crate::{SidIdentifierAuthority, SidSizeInfo, utils::sub_authority_size_guard};
+use crate::{SidIdentifierAuthority, SidSizeInfo};
 
 use core::{
     alloc::Layout,
     fmt::{self, Debug, Display},
     hash::Hash,
-    mem::offset_of,
     slice,
 };
 
@@ -189,46 +189,22 @@ impl Sid {
     /// Returns an error if the byte slice is not a valid SID.
     /// # Errors
     /// Invalid Sid format if the buffer is not an [Sid]
+    /// # Safety
+    /// Alignment is not checked the alignment need to be `align_of!(u32)`
     /// # Examples
     /// ```rust
-    /// # use win_security_identifier::{Sid, SidIdentifierAuthority};
-    /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
-    /// let bytes: [u8; 12] = [
-    ///     1, // revision
-    ///     1, // sub_authority_count
-    ///     0, 0, 0, 0, 0, 5, // identifier_authority (NT AUTHORITY)
-    ///     20, 0, 0, 0, // sub_authority[0]
-    /// ];
-    /// let sid = Sid::from_bytes(&bytes).expect("valid SID parts");
+    /// # use win_security_identifier::{Sid, SidIdentifierAuthority, ConstSid};
+    /// # let const_sid = ConstSid::<1>::new(1,  SidIdentifierAuthority::NT_AUTHORITY, [20u32]);
+    /// # let bytes = const_sid.as_bytes();
+    /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts and :
+    /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [20u32]);
     #[inline]
-    pub fn from_bytes(value: &[u8]) -> Result<&Self, InvalidSidFormat> {
-        let min_size = SidSizeInfo::MIN.get_layout().size();
-        if value.len() < min_size {
-            return Err(InvalidSidFormat);
-        }
-
-        let count_offset = offset_of!(Self, sub_authority_count);
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "We know the count_offset is in the bound (was checked by minimum size)"
-        )]
-        let count = value[count_offset];
-
-        if !sub_authority_size_guard(count as usize) {
-            return Err(InvalidSidFormat);
-        }
-
-        let size = SidSizeInfo::from_count(count).map_or_else(
-            || {
-                unreachable!();
-            },
-            |info| info.get_layout().size(),
-        );
-        if value.len() != size {
-            return Err(InvalidSidFormat);
+    pub const unsafe fn from_bytes(value: &[u8]) -> Result<&Self, InvalidSidFormat> {
+        if let Err(err) = validate_sid_bytes_unaligned(value) {
+            return Err(err);
         }
         Ok(
             // Safety: value length has been validated against the expected layout size.
@@ -281,14 +257,6 @@ impl Hash for Sid {
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for &'a Sid {
-    type Error = InvalidSidFormat;
-
-    #[inline]
-    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        Sid::from_bytes(value)
-    }
-}
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[cfg(test)]
 mod tests {
