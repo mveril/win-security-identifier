@@ -13,11 +13,14 @@ use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::mem::offset_of;
 use core::ops::Deref;
+mod maybe_uninit;
 use core::ops::DerefMut;
+use core::ptr;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
 use core::str::FromStr;
 use delegate::delegate;
+use maybe_uninit::MaybeUninitSecurityIdentifier;
 use parsing::SidComponents;
 #[cfg(feature = "std")]
 use std::{alloc, borrow::ToOwned};
@@ -130,42 +133,16 @@ impl SecurityIdentifier {
         // SAFETY: sub_authority_count is validated by guard.
         let size_info = unsafe { SidSizeInfo::from_count(sub_authority_count).unwrap_unchecked() };
         // Safety: The uninit SID will be correctly filled after.
-        let mut instance = unsafe { Self::uninit(size_info) };
+        let mut uninit = MaybeUninitSecurityIdentifier::alloc(size_info);
         // Safety: sid is valid here to be fill.
-        let sid_ref = &mut instance.inner.as_mut();
-        sid_ref.revision = revision;
-        sid_ref.sub_authority_count = sub_authority_count;
-        sid_ref.identifier_authority = identifier_authority;
-        sid_ref.sub_authority.copy_from_slice(sub_authority);
-        instance
-    }
-
-    /// Allocates uninitialized storage for a `Sid` using `size_info`.
-    ///
-    /// This is an internal building block used by constructors.
-    ///
-    /// # Safety
-    /// - The returned memory is uninitialized; caller must initialize all
-    ///   fields before any safe observation.
-    /// - `size_info` must be consistent with the number of sub-authorities written later.
-    unsafe fn uninit(size_info: SidSizeInfo) -> Self {
-        let layout = size_info.get_layout();
-        // SAFETY: layout is valid and non-zero sized.
-        let mem_ptr = unsafe { alloc::alloc(layout) };
-        if mem_ptr.is_null() {
-            alloc::handle_alloc_error(layout);
+        let sid_ptr = uninit.as_mut_ptr();
+        unsafe {
+            (*sid_ptr).revision = revision;
+            (*sid_ptr).sub_authority_count = sub_authority_count;
+            (*sid_ptr).identifier_authority = identifier_authority;
+            (*sid_ptr).sub_authority.copy_from_slice(sub_authority);
         }
-        let sub_authority_count = size_info.get_sub_authority_count();
-        // SAFETY: `from_raw_parts_mut` builds a fat pointer to `Sid` with the
-        // correct metadata (`sub_authority_count` elements in the trailing slice).
-
-        let ptr: *mut Sid = from_raw_parts_mut(mem_ptr.cast::<()>(), sub_authority_count as usize);
-        // Initialize mandatory header field needed by later methods.
-        // SAFETY: `ptr` was initialized just above.
-        let mut inner = unsafe { Box::from_raw(ptr) };
-        inner.sub_authority_count = sub_authority_count;
-
-        Self { inner }
+        unsafe { uninit.assume_init() }
     }
 
     /// Creates a `SecurityIdentifier` from a byte slice.
@@ -217,12 +194,12 @@ impl SecurityIdentifier {
             SidSizeInfo::from_count(bytes[offset_of!(Sid, sub_authority_count)]).unwrap_unchecked()
         };
         // Safety: The uninit SID is properly initialized by copying from `self` after.
-        let mut instance = unsafe { Self::uninit(size_info) };
+        let mut uninit = unsafe { MaybeUninitSecurityIdentifier::alloc(size_info) };
         // Safety: We copy all the bytes from a valid SID of the same size.
         unsafe {
-            instance.as_binary_mut().copy_from_slice(bytes);
+            ptr::copy_nonoverlapping(bytes, ,uninit.as_mut_ptr().cast::<u8>(), bytes.len()); 
+            uninit.assume_init()
         }
-        instance
     }
 
     /// Returns a reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
