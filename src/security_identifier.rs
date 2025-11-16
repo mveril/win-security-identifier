@@ -50,6 +50,7 @@ pub struct SecurityIdentifier {
 }
 
 impl Debug for SecurityIdentifier {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Debug::fmt(&*self.inner, f)
     }
@@ -244,7 +245,7 @@ impl SecurityIdentifier {
     #[inline]
     #[must_use]
     pub fn as_sid(&self) -> &Sid {
-        &self.inner.as_ref()
+        self.inner.as_ref()
     }
 
     /// Returns a mut reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
@@ -391,6 +392,7 @@ impl Clone for SecurityIdentifier {
 }
 
 impl Display for SecurityIdentifier {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Display::fmt(&*self.inner, f)
     }
@@ -596,12 +598,14 @@ pub mod test {
 }
 
 impl From<Box<Sid>> for SecurityIdentifier {
+    #[inline]
     fn from(value: Box<Sid>) -> Self {
         Self { inner: value }
     }
 }
 
 impl From<SecurityIdentifier> for Box<Sid> {
+    #[inline]
     fn from(value: SecurityIdentifier) -> Self {
         value.inner
     }
