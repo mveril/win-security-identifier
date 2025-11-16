@@ -8,8 +8,7 @@ use crate::polyfills_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
-use alloc::{alloc, borrow::Borrow, borrow::ToOwned};
-#[cfg(feature = "std")]
+use alloc::{alloc, borrow::ToOwned};
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::mem::offset_of;
