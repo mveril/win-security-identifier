@@ -308,7 +308,7 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "std"))]
     mod windows {
         use super::super::*;
         #[cfg(feature = "alloc")]

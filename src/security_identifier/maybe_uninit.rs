@@ -5,7 +5,7 @@ use crate::{SecurityIdentifier, Sid, SidSizeInfo};
 use ::alloc::{alloc, boxed::Box};
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
-use core::{alloc::Layout, mem::ManuallyDrop, ptr::NonNull};
+use core::{alloc::Layout, mem, ptr::NonNull};
 #[cfg(feature = "std")]
 use std::alloc;
 
@@ -15,40 +15,32 @@ use std::alloc;
 /// a `Sid` DST, but the value is not considered initialized until
 /// `assume_init` is called.
 pub(super) struct MaybeUninitSecurityIdentifier {
-    ptr: NonNull<Sid>,
+    base: NonNull<u8>,
     layout: Layout,
+    sub_authority_count: u8,
 }
 
 impl MaybeUninitSecurityIdentifier {
     /// Allocate uninitialized storage for a `Sid` with the given size info.
-    ///
-    /// This does not initialize any field of `Sid`; it only reserves
-    /// correctly sized and aligned memory and builds a fat pointer.
-    pub fn alloc(size_info: SidSizeInfo) -> Self {
+    pub fn alloc(size_info: &SidSizeInfo) -> Self {
         let layout = size_info.get_layout();
 
-        // SAFETY: `layout` is a valid non-zero-sized layout, produced by
-        // `SidSizeInfo::get_layout` for a `Sid` value.
+        // SAFETY: `layout` is a valid non-zero-sized layout for a `Sid` value.
         let mem_ptr = unsafe { alloc::alloc(layout) };
-        if mem_ptr.is_null() {
-            alloc::handle_alloc_error(layout);
-        }
-
+        let base = NonNull::new(mem_ptr).unwrap_or_else(|| alloc::handle_alloc_error(layout));
         let sub_authority_count = size_info.get_sub_authority_count();
-        let base_ptr = mem_ptr.cast::<()>();
 
-        // SAFETY:
-        // - `base_ptr` comes from a valid allocation with `layout`.
-        // - `sub_authority_count` is the correct slice length metadata
-        //   for the trailing `[u32]` part of `Sid`.
-        let sid_ptr: *mut Sid =
-            unsafe { from_raw_parts_mut(base_ptr, sub_authority_count as usize) };
+        Self {
+            base,
+            layout,
+            sub_authority_count,
+        }
+    }
 
-        // SAFETY: `sid_ptr` is non-null because `alloc::alloc` either returns
-        // null (handled above) or a valid non-null pointer.
-        let ptr = unsafe { NonNull::new_unchecked(sid_ptr) };
-
-        Self { ptr, layout }
+    const fn sid_ptr(&self) -> *mut Sid {
+        let meta = self.sub_authority_count as usize;
+        let base_opaque = self.base.as_ptr().cast::<()>();
+        from_raw_parts_mut(base_opaque, meta)
     }
 
     /// Returns a mutable raw pointer to the underlying uninitialized `Sid`.
@@ -58,28 +50,31 @@ impl MaybeUninitSecurityIdentifier {
     ///   `assume_init` is called.
     /// - The caller must ensure that all fields of `Sid` are fully and
     ///   correctly initialized before calling `assume_init`.
-    pub unsafe fn as_mut_ptr(&mut self) -> *mut Sid {
-        self.ptr
+    #[expect(
+        clippy::needless_pass_by_ref_mut,
+        reason = "Because we return a mut pointer in public we should use a &mut self"
+    )]
+    pub const fn as_mut_ptr(&mut self) -> *mut Sid {
+        self.sid_ptr()
     }
 
     /// Turn this uninitialized handle into a fully initialized `SecurityIdentifier`.
     ///
-    /// After this call, the memory is owned and managed by a `Box<Sid>`
-    /// inside `SecurityIdentifier`, and this helper must not be used again.
+    /// After this call, the memory is owned by a `Box<Sid>` and this helper
+    /// must not be used again.
     ///
     /// # Safety
-    /// - The caller must guarantee that the `Sid` pointed to by `self.ptr`
+    /// - The caller must guarantee that the `Sid` pointed to by this handle
     ///   has been fully initialized and is a valid `Sid` value.
     pub unsafe fn assume_init(self) -> SecurityIdentifier {
-        let mut this = ManuallyDrop::new(self);
-        let raw_ptr = this.ptr.as_ptr();
+        // Build the fat pointer before preventing `Drop`.
+        let raw_ptr = self.sid_ptr();
+        #[expect(clippy::mem_forget, reason = "We will box the raw pointer just after")]
+        mem::forget(self);
 
         // SAFETY:
-        // - `raw_ptr` comes from `alloc::alloc` with the same layout stored
-        //   in `self.layout`.
-        // - Ownership of the allocation is transferred to `Box`, and this
-        //   helper will not deallocate it in `Drop` because `self` is wrapped
-        //   in `ManuallyDrop`.
+        // - `raw_ptr` comes from `alloc::alloc` with layout `this.layout`.
+        // - Ownership is transferred to `Box`, `Drop` will not deallocate.
         let inner = unsafe { Box::from_raw(raw_ptr) };
 
         SecurityIdentifier { inner }
@@ -88,15 +83,27 @@ impl MaybeUninitSecurityIdentifier {
 
 impl Drop for MaybeUninitSecurityIdentifier {
     fn drop(&mut self) {
-        let raw = self.ptr.as_ptr().cast::<u8>();
-
         // SAFETY:
-        // - `raw` was allocated by `alloc::alloc` with `self.layout` in `alloc`.
-        // - `assume_init` has not been called, otherwise `self` would have
-        //   been wrapped in `ManuallyDrop` and this `Drop` would not run.
-        // - Therefore it is correct to deallocate `raw` with `self.layout`.
+        // - `self.base` was allocated by `alloc::alloc` with `self.layout`.
+        // - `assume_init` would wrap `self` in `ManuallyDrop`, so this Drop
+        //   only runs for still-owned allocations.
         unsafe {
-            alloc::dealloc(raw, self.layout);
+            alloc::dealloc(self.base.as_ptr(), self.layout);
+        }
+    }
+}
+
+impl From<Box<Sid>> for MaybeUninitSecurityIdentifier {
+    fn from(value: Box<Sid>) -> Self {
+        let layout = Layout::for_value(value.as_ref());
+        let sub_authority_count = value.sub_authority_count;
+        let base = Box::into_raw(value).cast::<u8>();
+        // Safety: We know the PTR from the box is not null
+        let base = unsafe { NonNull::new_unchecked(base) };
+        Self {
+            base,
+            layout,
+            sub_authority_count,
         }
     }
 }

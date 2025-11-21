@@ -3,12 +3,11 @@ use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
 use crate::StackSid;
-#[cfg(not(has_ptr_metadata))]
-use crate::polyfills_ptr::from_raw_parts_mut;
 use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
-use ::alloc::{alloc, borrow::ToOwned, boxed::Box};
+use ::alloc::{borrow::ToOwned, boxed::Box};
+use core::alloc::Layout;
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::mem::offset_of;
@@ -16,14 +15,12 @@ use core::ops::Deref;
 mod maybe_uninit;
 use core::ops::DerefMut;
 use core::ptr;
-#[cfg(has_ptr_metadata)]
-use core::ptr::from_raw_parts_mut;
 use core::str::FromStr;
 use delegate::delegate;
 use maybe_uninit::MaybeUninitSecurityIdentifier;
 use parsing::SidComponents;
 #[cfg(feature = "std")]
-use std::{alloc, borrow::ToOwned};
+use std::borrow::ToOwned;
 
 /// Owned, heap-allocated Windows **Security Identifier** (SID).
 ///
@@ -133,15 +130,20 @@ impl SecurityIdentifier {
         // SAFETY: sub_authority_count is validated by guard.
         let size_info = unsafe { SidSizeInfo::from_count(sub_authority_count).unwrap_unchecked() };
         // Safety: The uninit SID will be correctly filled after.
-        let mut uninit = MaybeUninitSecurityIdentifier::alloc(size_info);
-        // Safety: sid is valid here to be fill.
+        let mut uninit = MaybeUninitSecurityIdentifier::alloc(&size_info);
         let sid_ptr = uninit.as_mut_ptr();
+        #[expect(
+            clippy::multiple_unsafe_ops_per_block,
+            reason = "Same kind of operations"
+        )]
+        // Safety: We know the ptr is not null so we can write
         unsafe {
             (*sid_ptr).revision = revision;
             (*sid_ptr).sub_authority_count = sub_authority_count;
             (*sid_ptr).identifier_authority = identifier_authority;
             (*sid_ptr).sub_authority.copy_from_slice(sub_authority);
         }
+        // Safety: all is written so we can assume init
         unsafe { uninit.assume_init() }
     }
 
@@ -194,12 +196,17 @@ impl SecurityIdentifier {
             SidSizeInfo::from_count(bytes[offset_of!(Sid, sub_authority_count)]).unwrap_unchecked()
         };
         // Safety: The uninit SID is properly initialized by copying from `self` after.
-        let mut uninit = unsafe { MaybeUninitSecurityIdentifier::alloc(size_info) };
+        let mut uninit = MaybeUninitSecurityIdentifier::alloc(&size_info);
         // Safety: We copy all the bytes from a valid SID of the same size.
         unsafe {
-            ptr::copy_nonoverlapping(bytes, ,uninit.as_mut_ptr().cast::<u8>(), bytes.len()); 
-            uninit.assume_init()
+            ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                uninit.as_mut_ptr().cast::<u8>(),
+                size_info.get_layout().size(),
+            );
         }
+        // Safety: all is written so we can init.
+        unsafe { uninit.assume_init() }
     }
 
     /// Returns a reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
@@ -270,7 +277,9 @@ impl TryFrom<&[u8]> for SecurityIdentifier {
 impl<'a> From<&'a Sid> for SecurityIdentifier {
     #[inline]
     fn from(value: &'a Sid) -> Self {
-        value.to_owned()
+        let binary = value.as_binary();
+        // Safety: sub_authority_count is known to be valid because `self` is valid.
+        unsafe { Self::from_bytes_unchecked(binary) }
     }
 }
 
@@ -297,9 +306,7 @@ impl ToOwned for Sid {
     type Owned = super::SecurityIdentifier;
     #[inline]
     fn to_owned(&self) -> Self::Owned {
-        let binary = self.as_binary();
-        // Safety: sub_authority_count is known to be valid because `self` is valid.
-        unsafe { Self::Owned::from_bytes_unchecked(binary) }
+        self.into()
     }
 }
 
@@ -350,19 +357,17 @@ impl AsMut<Sid> for SecurityIdentifier {
 impl Clone for SecurityIdentifier {
     #[inline]
     fn clone(&self) -> Self {
-        // Safety: both `self` and the returned instance are valid SIDs with the same layout.
-        let size_info =
-            unsafe { SidSizeInfo::from_count(self.sub_authority_count).unwrap_unchecked() };
-        // Safety: The uninit SID is properly initialized by `clone_from`.
-        let mut sid = unsafe { Self::uninit(size_info) };
-        sid.clone_from(self);
-        sid
+        self.as_sid().into()
     }
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        // Safety: both `self` and `source` are valid SIDs with the same layout.
-        unsafe {
-            self.as_binary_mut().copy_from_slice(source.as_binary());
+        if Layout::for_value(self.as_sid()) == Layout::for_value(source.as_sid()) {
+            // Safety: We checked layout is ok
+            unsafe {
+                self.as_binary_mut().copy_from_slice(source.as_binary());
+            }
+        } else {
+            *self = source.clone();
         }
     }
 }
