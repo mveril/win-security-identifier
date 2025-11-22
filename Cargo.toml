@@ -10,8 +10,8 @@ package.repository = "https://github.com/mveril/win-security-identifier"
 [workspace.dependencies]
 arrayvec = {version = "0.7", default-features = false}
 thiserror = {version = "2", default-features = false}
-parsing = { path = "parsing", package = "win-security-identifier-parsing", default-features = false }
-sid_macro = { path = "macro", package = "win-security-identifier-macro" }
+parsing = { path = "parsing", package = "win-security-identifier-parsing", default-features = false, version = "0.1.0"}
+sid_macro = { path = "macro", package = "win-security-identifier-macro", version = "0.1.0"}
 
 [package]
 name = "win-security-identifier"
