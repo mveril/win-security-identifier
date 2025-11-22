@@ -48,6 +48,8 @@ jobs:
           rustup update ${{ matrix.toolchain }}
           rustup default ${{ matrix.toolchain }}
           rustup component add rustfmt clippy
+          # Needed for cargo-llvm-cov
+          rustup component add llvm-tools-preview || rustup component add llvm-tools
 
       - name: Cache cargo dependencies
         uses: actions/cache@v4
@@ -79,13 +81,38 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace --all-features
 
-      - name: Run tests
+      # -------- Tests / Coverage --------
+
+      # Nightly : normal tests
+      - name: Run tests (nightly only)
+        if: ${{ matrix.toolchain == 'nightly' }}
         run: cargo test --workspace --all-features --all-targets -- --nocapture
 
+      # Stable : install cargo-llvm-cov
+      - name: Install cargo-llvm-cov (stable only)
+        if: ${{ matrix.toolchain == 'stable' }}
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Stable : tests + coverage with cargo-llvm-cov
+      - name: Run tests with coverage (stable only)
+        if: ${{ matrix.toolchain == 'stable' }}
+        run: |
+          cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+
+      # Upload to Codecov for each plateforme on stable
+      - name: Upload coverage to Codecov (stable only)
+        if: ${{ matrix.toolchain == 'stable' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: codecov.json
+          flags: ${{ matrix.os }}-stable
+          fail_ci_if_error: true
+
+      # -------- Docs Windows --------
       - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
         if: ${{ runner.os == 'windows-latest' }}
         run: cargo doc --workspace --all-features --no-deps
-
+  
   no-std:
     name: no_std check and build
     runs-on: ubuntu-latest
