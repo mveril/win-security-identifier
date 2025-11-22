@@ -28,7 +28,7 @@ impl SidSizeInfo {
 
     #[inline]
     #[allow(dead_code)]
-    pub const fn get_sub_authority_count(self) -> u8 {
+    pub const fn get_sub_authority_count(&self) -> u8 {
         self.sub_authority_count
     }
 
