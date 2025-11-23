@@ -83,7 +83,7 @@ jobs:
       # -------- Tests / Coverage --------
 
       # Nightly : normal tests
-      - name: Run tests (nightly only)
+      - name: Run tests (macOS only)
         if: ${{ runner.os == 'macOS' }}
         run: cargo test --workspace --all-features --all-targets -- --nocapture
 
