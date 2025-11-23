@@ -1,0 +1,44 @@
+codecov:
+  require_ci_to_pass: yes
+  notify:
+    after_n_builds: 3  # linux-stable + linux-nightly + windows-stable
+    wait_for_ci: yes
+
+coverage:
+  status:
+    project:
+      default: off
+
+      # 🎯 main KPI : Linux stable
+      linux-stable:
+        flags:
+          - linux-stable
+        target: auto
+        threshold: 0.03
+        base: auto
+
+      # 🎯 secondary kpi: Windows stable
+      windows-stable:
+        flags:
+          - windows-stable
+        target: 0.60
+        threshold: 0.05
+        base: auto
+    patch:
+      default:
+        target: 0.90
+        threshold: 0.02
+        base: auto
+
+flags:
+  linux-stable:
+    name: "Linux stable (reference coverage)"
+
+  linux-nightly:
+    name: "Linux nightly (alt backend)"
+
+  windows-stable:
+    name: "Windows stable (Win32 + core)"
+
+  windows-nightly:
+    name: "Windows nightly (Win32 + core)"
