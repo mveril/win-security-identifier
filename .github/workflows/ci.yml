@@ -57,7 +57,7 @@ jobs:
             ~/.cargo/git
             ~/.cargo/advisory-db
             target
-          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Show toolchain versions
         run: rustc -Vv && cargo -V
@@ -138,7 +138,7 @@ jobs:
             ~/.cargo/git
             ~/.cargo/advisory-db
             target
-          key: ${{ runner.os }}-cargo-stable-no_std-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-stable-no_std-${{ hashFiles('Cargo.lock') }}
 
       - name: Install Nushell
         uses: hustcer/setup-nu@v3
