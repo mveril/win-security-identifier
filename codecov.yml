@@ -35,7 +35,7 @@ flags:
     name: "Linux stable (reference coverage)"
 
   linux-nightly:
-    name: "Linux nightly (alt backend)"
+    name: "Linux nightly"
 
   windows-stable:
     name: "Windows stable (Win32 + core)"
