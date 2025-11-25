@@ -57,7 +57,8 @@ jobs:
             ~/.cargo/git
             ~/.cargo/advisory-db
             target
-          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.toml') }}
+          # We use ${{ github.sha }} instead of hashfile because of an issue with the macos runner
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ github.sha }}
 
       - name: Show toolchain versions
         run: rustc -Vv && cargo -V
@@ -79,13 +80,38 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace --all-features
 
-      - name: Run tests
+      # -------- Tests / Coverage --------
+
+      # Nightly : normal tests
+      - name: Run tests (macOS only)
+        if: ${{ runner.os == 'macOS' }}
         run: cargo test --workspace --all-features --all-targets -- --nocapture
 
+      # Stable : install cargo-llvm-cov
+      - name: Install cargo-llvm-cov (windows and linux only)
+        if: ${{ runner.os != 'macOS' }}
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Stable : tests + coverage with cargo-llvm-cov
+      - name: Run tests with coverage (windos and linux only)
+        if: ${{ runner.os != 'macOS' }}
+        run: |
+          cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+
+      # Upload to Codecov for each plateforme on stable
+      - name: Upload coverage to Codecov (stable only)
+        if: ${{ runner.os != 'macOS' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: codecov.json
+          flags: ${{ runner.os }}-${{matrix.toolchain}}
+          fail_ci_if_error: true
+
+      # -------- Docs Windows --------
       - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
         if: ${{ runner.os == 'windows-latest' }}
         run: cargo doc --workspace --all-features --no-deps
-
+  
   no-std:
     name: no_std check and build
     runs-on: ubuntu-latest
@@ -113,7 +139,8 @@ jobs:
             ~/.cargo/git
             ~/.cargo/advisory-db
             target
-          key: ${{ runner.os }}-cargo-stable-no_std-${{ hashFiles('**/Cargo.toml') }}
+          # We use ${{ github.sha }} instead of hashfile because of an issue with the macos runner
+          key: ${{ runner.os }}-cargo-stable-no_std-${{ github.sha }}
 
       - name: Install Nushell
         uses: hustcer/setup-nu@v3
