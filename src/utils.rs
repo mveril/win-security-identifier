@@ -52,3 +52,20 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use proptest::{prop_assert, proptest};
+
+    proptest! {
+        #[test]
+        fn guard_ok(count in (1_usize..15_usize)){
+            prop_assert!(sub_authority_size_guard(count));
+        }
+        #[test]
+        fn guard_err(count in (16_usize..)){
+            prop_assert!(!sub_authority_size_guard(count));
+        }
+    }
+}
