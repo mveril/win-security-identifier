@@ -93,13 +93,12 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       # Stable : tests + coverage with cargo-llvm-cov
-      - name: Run tests with coverage (windos and linux only)
+      - name: Run tests with coverage (Windos and Linux only)
         if: ${{ runner.os != 'macOS' }}
         run: |
           cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
 
-      # Upload to Codecov for each plateforme on stable
-      - name: Upload coverage to Codecov (stable only)
+      - name: Upload coverage to Codecov (Windows and Linux only)
         if: ${{ runner.os != 'macOS' }}
         uses: codecov/codecov-action@v5
         with:
