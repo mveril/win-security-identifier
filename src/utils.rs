@@ -12,18 +12,11 @@ pub const fn sub_authority_size_guard(size: usize) -> bool {
 }
 
 /// Validates a raw SID blob like `IsValidSid` would, without assuming alignment.
-///
-/// - `sub_authority_count` in [1..=15]
-/// - total size == 8 + 4 * `sub_authority_count`
-/// - identifier authority is 6 bytes (big-endian); any value is accepted
-///
-/// No references to possibly-unaligned typed fields are created.
-/// Everything is read from bytes using unaligned-safe operations.
 pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFormat> {
     const REVISION_OFFSET: usize = offset_of!(Sid, revision);
     const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
-    let min_size = SidSizeInfo::MIN.get_layout().size();
-    if buf.len() < min_size {
+    const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
+    if buf.len() < MIN_SIZE {
         return Err(InvalidSidFormat);
     }
 
@@ -43,29 +36,137 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
     if !sub_authority_size_guard(count as usize) {
         return Err(InvalidSidFormat);
     }
-    // SAFETY: Size already checked previously
+
+    // SAFETY: size already validated
     let size = unsafe { SidSizeInfo::from_count(count).unwrap_unchecked() }
         .get_layout()
         .size();
+
     if buf.len() != size {
         return Err(InvalidSidFormat);
     }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use proptest::{prop_assert, proptest};
+    use proptest::{prop_assert, prop_assert_eq, prop_assume, proptest};
+    const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
+
+    /// Builds a raw SID buffer for the given sub-authority count.
+    fn make_sid_bytes(count: u8) -> Vec<u8> {
+        assert!(
+            sub_authority_size_guard(count as usize),
+            "Invalid count for make_sid_bytes()"
+        );
+
+        let layout = SidSizeInfo::from_count(count)
+            .expect("valid count")
+            .get_layout();
+
+        let mut buf = vec![0u8; layout.size()];
+        let count_offset = offset_of!(Sid, sub_authority_count);
+        buf[count_offset] = count;
+        buf
+    }
+
+    // -------------------------------------------------------------
+    // Basic tests
+    // -------------------------------------------------------------
+
+    #[test]
+    fn rejects_too_small_buffer() {
+        for len in 0..MIN_SIZE {
+            let buf = vec![0u8; len];
+            assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+        }
+    }
+
+    #[test]
+    fn rejects_zero_sub_authority() {
+        let mut buf = make_sid_bytes(1);
+        let count_offset = offset_of!(Sid, sub_authority_count);
+        buf[count_offset] = 0;
+
+        assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+    }
+
+    #[test]
+    fn rejects_excessive_sub_authority() {
+        let mut buf = vec![0u8; MIN_SIZE];
+
+        let count_offset = offset_of!(Sid, sub_authority_count);
+        buf[count_offset] = (MAX_SUBAUTHORITY_COUNT + 1) as u8;
+
+        assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+    }
+
+    #[test]
+    fn rejects_wrong_size_for_count() {
+        let mut buf = make_sid_bytes(1);
+        let count_offset = offset_of!(Sid, sub_authority_count);
+        buf[count_offset] = 2;
+
+        assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+    }
+
+    #[test]
+    fn accepts_all_valid_counts() {
+        for count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT {
+            let buf = make_sid_bytes(count as u8);
+            assert_eq!(validate_sid_bytes_unaligned(&buf), Ok(()));
+        }
+    }
+
+    // -------------------------------------------------------------
+    // proptest for the guard (your tests)
+    // -------------------------------------------------------------
 
     proptest! {
         #[test]
-        fn guard_ok(count in (1_usize..15_usize)){
+        fn guard_ok(count in (1_usize..=15_usize)){
             prop_assert!(sub_authority_size_guard(count));
         }
+
         #[test]
         fn guard_err(count in (16_usize..)){
             prop_assert!(!sub_authority_size_guard(count));
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Additional proptest validations
+    // -------------------------------------------------------------
+
+    proptest! {
+        #[test]
+        fn proptest_valid_sids_are_accepted(count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT) {
+            let buf = make_sid_bytes(count as u8);
+            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Ok(()));
+        }
+
+        #[test]
+        fn proptest_short_buffers_are_rejected(len in 0usize..MIN_SIZE) {
+            let buf = vec![0u8; len];
+            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+        }
+
+        #[test]
+        fn proptest_wrong_length_is_rejected(
+            count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT,
+            extra in 1usize..8usize
+        ) {
+            let mut buf = make_sid_bytes(count as u8);
+
+            if extra % 2 == 0 {
+                buf.truncate(buf.len().saturating_sub(extra));
+            } else {
+                buf.extend(std::iter::repeat(0u8).take(extra));
+            }
+
+            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
         }
     }
 }
