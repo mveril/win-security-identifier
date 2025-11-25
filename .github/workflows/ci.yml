@@ -109,7 +109,7 @@ jobs:
 
       # -------- Docs Windows --------
       - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
-        if: ${{ runner.os == 'windows-latest' }}
+        if: ${{ runner.os == 'windows' }}
         run: cargo doc --workspace --all-features --no-deps
   
   no-std:
