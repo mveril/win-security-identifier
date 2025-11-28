@@ -151,7 +151,7 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
-    /// let const_sid = ConstSid::<1>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [1]);
+    /// let const_sid = ConstSid::<1>::new(SidIdentifierAuthority::NT_AUTHORITY, [1]);
     /// let sid = const_sid.as_sid();
     /// let subs = sid.get_sub_authorities();
     /// assert_eq!(subs, &[1]);
@@ -194,7 +194,7 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, SidIdentifierAuthority, ConstSid};
-    /// # let const_sid = ConstSid::<1>::new(1,  SidIdentifierAuthority::NT_AUTHORITY, [20u32]);
+    /// # let const_sid = ConstSid::<1>::new(SidIdentifierAuthority::NT_AUTHORITY, [20u32]);
     /// # let bytes = const_sid.as_bytes();
     /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts and :
     /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");

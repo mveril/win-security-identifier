@@ -11,8 +11,6 @@ pub const MAX_SUBAUTHORITY_COUNT: u8 = 15;
 const MAX_SUBAUTHORITY_COUNT_USIZE: usize = MAX_SUBAUTHORITY_COUNT as usize;
 
 pub struct SidComponents {
-    /// The SID revision value, generally 1.
-    pub revision: u8,
     /// The SID identifier authority value.
     pub identifier_authority: [u8; 6],
     /// The SID sub-authority values.
@@ -49,6 +47,10 @@ impl FromStr for SidComponents {
             .parse::<u8>()
             .map_err(|_| InvalidSidFormat)?;
 
+        if revision != 1{
+            return Err(InvalidSidFormat);
+        }
+
         let identifier_authority = s_cmp
             .next()
             .ok_or(InvalidSidFormat)
@@ -68,7 +70,6 @@ impl FromStr for SidComponents {
         }
 
         Ok(Self {
-            revision,
             identifier_authority,
             sub_authority,
         })

@@ -37,10 +37,9 @@ use std::borrow::ToOwned;
 /// ```rust
 /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
 /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
-/// let revision = 1u8;
 /// let ia = SidIdentifierAuthority::NT_AUTHORITY; // example ctor
 /// let subs = [32u32, 544u32];
-/// let sid = SecurityIdentifier::try_new(revision, ia, &subs)
+/// let sid = SecurityIdentifier::try_new(ia, &subs)
 ///     .expect("valid SID parts");
 /// println!("{}", sid); // e.g., "S-1-5-32-544"
 /// ```
@@ -69,7 +68,6 @@ impl SecurityIdentifier {
     /// ```rust
     /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
     /// let sid = SecurityIdentifier::try_new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32u32, 544u32]
     /// ).unwrap();
@@ -80,15 +78,13 @@ impl SecurityIdentifier {
     #[must_use]
     #[inline]
     pub fn try_new<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
-        revision: u8,
         identifier_authority: I,
         sub_authority: S,
     ) -> Option<Self> {
         let sub_authority = sub_authority.as_ref();
         // SAFETY: sub_authority_count is correctly validated by guard.
-        sub_authority_size_guard(sub_authority.len()).then_some(unsafe {
-            Self::new_unchecked(revision, identifier_authority, sub_authority)
-        })
+        sub_authority_size_guard(sub_authority.len())
+            .then_some(unsafe { Self::new_unchecked(identifier_authority, sub_authority) })
     }
 
     /// Creates a new `SecurityIdentifier` from parts **without validation**.
@@ -104,7 +100,6 @@ impl SecurityIdentifier {
     /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
     /// let sid = unsafe {
     ///     SecurityIdentifier::new_unchecked(
-    ///         1,
     ///         SidIdentifierAuthority::NT_AUTHORITY,
     ///         [32u32, 544u32],
     ///     )
@@ -116,7 +111,6 @@ impl SecurityIdentifier {
     #[must_use]
     #[inline]
     pub unsafe fn new_unchecked<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
-        revision: u8,
         identifier_authority: I,
         sub_authority: S,
     ) -> Self {
@@ -138,7 +132,7 @@ impl SecurityIdentifier {
         )]
         // Safety: We know the ptr is not null so we can write
         unsafe {
-            (*sid_ptr).revision = revision;
+            (*sid_ptr).revision = 1;
             (*sid_ptr).sub_authority_count = sub_authority_count;
             (*sid_ptr).identifier_authority = identifier_authority;
             (*sid_ptr).sub_authority.copy_from_slice(sub_authority);
@@ -218,7 +212,6 @@ impl SecurityIdentifier {
     /// ```rust
     /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority, Sid};
     /// let admin = SecurityIdentifier::try_new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32, 544],
     /// ).unwrap();
@@ -243,7 +236,6 @@ impl SecurityIdentifier {
     /// // Create a mutable ConstSid with three sub-authorities:
     /// // S-1-5-21-1000 (revision 1, authority 5, sub-authorities [21, 1000])
     /// let mut owned = SecurityIdentifier::try_new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     &[21u32, 100u32, 0u32],
     /// ).unwrap();
@@ -293,7 +285,6 @@ impl FromStr for SecurityIdentifier {
             // SAFETY: sub_authority_count is known to be valid because `SidComponents::from_str` validated it.
             unsafe {
                 Self::new_unchecked(
-                    components.revision,
                     components.identifier_authority,
                     components.sub_authority.as_slice(),
                 )
@@ -446,13 +437,12 @@ pub mod test {
     use proptest::prelude::*;
     pub fn arb_security_identifier() -> impl Strategy<Value = SecurityIdentifier> {
         (
-            Just(1u8), // revision
             arb_identifier_authority(),
             proptest::collection::vec(any::<u32>(), 1..=15),
         )
-            .prop_map(|(revision, identifier_authority, sub_authorities)| {
+            .prop_map(|(identifier_authority, sub_authorities)| {
                 let subs = &sub_authorities.as_slice();
-                SecurityIdentifier::try_new(revision, identifier_authority, subs)
+                SecurityIdentifier::try_new(identifier_authority, subs)
                     .expect("Failed to generate SecurityIdentifier")
             })
     }

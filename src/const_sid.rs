@@ -77,17 +77,16 @@ where
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
-    /// let s = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
+    /// let s = ConstSid::<2>::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
     /// assert_eq!(s.to_string(), "S-1-5-32-544")
     #[must_use]
     #[inline]
     pub const fn new(
-        revision: u8,
         identifier_authority: SidIdentifierAuthority,
         sub_authority: [u32; N],
     ) -> Self {
         Self {
-            revision,
+            revision: 1,
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "N is guaranteed to be lower than 256 because it is lower than 16"
@@ -130,7 +129,6 @@ where
     /// // Create a mutable ConstSid with three sub-authorities:
     /// // S-1-5-21-1000 (revision 1, authority 5, sub-authorities [21, 1000])
     /// let mut cs = ConstSid::<3>::new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [21u32, 100u32, 0u32],
     /// );
@@ -163,7 +161,6 @@ where
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
     /// const ADMIN: ConstSid<2> = ConstSid::new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32, 544],
     /// );
@@ -193,7 +190,7 @@ where
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
-    /// let sid = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
+    /// let sid = ConstSid::<2>::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
     /// assert_eq!(sid.rid(), 544);
     /// ```
     #[inline]
@@ -290,7 +287,16 @@ where
         let revision = value.revision;
         let identifier_authority = value.identifier_authority;
         let sub_authority: [u32; N] = value.get_sub_authorities().try_into()?;
-        Ok(Self::new(revision, identifier_authority, sub_authority))
+        Ok(Self {
+            revision,
+            identifier_authority,
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "N is guaranteed to be lower than 256 because it is lower than 16"
+            )]
+            sub_authority_count: N as u8,
+            sub_authority,
+        })
     }
 }
 
@@ -383,7 +389,7 @@ mod test {
     #[cfg(feature = "alloc")]
     #[test]
     fn test_try_from_sid_and_security_identifier() {
-        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [21, 42]);
+        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42]);
         let owned: SecurityIdentifier = sid.into();
         let sid2 = ConstSid::<2>::try_from(owned.as_ref()).unwrap();
         assert_eq!(sid, sid2);
@@ -392,14 +398,14 @@ mod test {
     #[cfg(feature = "alloc")]
     #[test]
     fn test_invalid_try_from() {
-        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [21, 42, 99]);
+        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42, 99]);
         let owned: SecurityIdentifier = sid.into();
         assert!(ConstSid::<2>::try_from(owned.as_ref()).is_err());
     }
 
     #[test]
     fn test_const_sid_macro() {
-        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
+        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
         assert_eq!(sid.revision, 1);
         assert_eq!(
             sid.identifier_authority,
