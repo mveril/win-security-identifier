@@ -84,4 +84,13 @@ pub mod test {
             SidIdentifierAuthority::from(bytes)
         }
     }
+    
+    proptest! {
+        #[test]
+        fn test_convertion_identity(value in super::test::arb_identifier_authority()) {
+            let bytes: [u8; 6] = value.into();
+            let reconstructed = SidIdentifierAuthority::from(bytes);
+            prop_assert_eq!(value, reconstructed);
+        }
+    }
 }
