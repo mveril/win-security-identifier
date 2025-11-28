@@ -49,10 +49,11 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
     Ok(())
 }
 
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use super::*;
-    use proptest::{prop_assert, prop_assert_eq, prop_assume, proptest};
+    use proptest::{prop_assert, prop_assert_eq, proptest};
     const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
 
     /// Builds a raw SID buffer for the given sub-authority count.
@@ -98,7 +99,7 @@ mod test {
         let mut buf = vec![0u8; MIN_SIZE];
 
         let count_offset = offset_of!(Sid, sub_authority_count);
-        buf[count_offset] = (MAX_SUBAUTHORITY_COUNT + 1) as u8;
+        buf[count_offset] = MAX_SUBAUTHORITY_COUNT + 1;
 
         assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
     }
@@ -115,7 +116,7 @@ mod test {
     #[test]
     fn accepts_all_valid_counts() {
         for count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT {
-            let buf = make_sid_bytes(count as u8);
+            let buf = make_sid_bytes(count);
             assert_eq!(validate_sid_bytes_unaligned(&buf), Ok(()));
         }
     }
@@ -143,7 +144,7 @@ mod test {
     proptest! {
         #[test]
         fn proptest_valid_sids_are_accepted(count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT) {
-            let buf = make_sid_bytes(count as u8);
+            let buf = make_sid_bytes(count);
             prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Ok(()));
         }
 
@@ -158,12 +159,12 @@ mod test {
             count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT,
             extra in 1usize..8usize
         ) {
-            let mut buf = make_sid_bytes(count as u8);
+            let mut buf = make_sid_bytes(count);
 
             if extra % 2 == 0 {
                 buf.truncate(buf.len().saturating_sub(extra));
             } else {
-                buf.extend(std::iter::repeat(0u8).take(extra));
+                buf.extend(core::iter::repeat_n(0u8, extra));
             }
 
             prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
