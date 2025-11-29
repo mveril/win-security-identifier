@@ -8,7 +8,7 @@ use crate::sid::MAX_SUBAUTHORITY_COUNT;
 use crate::utils::{sub_authority_size_guard, validate_sid_bytes_unaligned};
 use crate::{Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
-use core::mem::MaybeUninit;
+use core::mem::{MaybeUninit, size_of};
 use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
