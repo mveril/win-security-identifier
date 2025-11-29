@@ -208,19 +208,19 @@ impl core::fmt::Debug for StackSid {
 }
 
 impl Clone for StackSid {
+    #[inline]
     fn clone(&self) -> Self {
         self.as_sid().into()
     }
 
+    #[inline]
     fn clone_from(&mut self, source: &Self) {
-        // Safety binary copy from another stackSid is safe
+        // Safety: Binary copy from another stackSid is safe
         unsafe {
             self.as_binary_mut().copy_from_slice(source.as_binary());
         }
     }
 }
-
-impl Copy for StackSid {}
 
 impl AsRef<Sid> for StackSid {
     #[inline]
