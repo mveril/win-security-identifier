@@ -237,7 +237,7 @@ impl Clone for StackSid {
         unsafe {
             ptr::from_mut(self)
                 .cast::<u8>()
-                .copy_from_nonoverlapping(binary_source.as_ptr(), len);
+                .copy_from(binary_source.as_ptr(), len);
         }
     }
 }
