@@ -346,9 +346,12 @@ impl PartialEq<StackSid> for Sid {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use crate::arb_identifier_authority;
-
     use super::*;
+    use crate::arb_identifier_authority;
+    #[cfg(not(has_ptr_metadata))]
+    use crate::polyfills_ptr::metadata;
+    #[cfg(has_ptr_metadata)]
+    use core::ptr::metadata;
     use proptest::prelude::*;
     pub fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
         (
@@ -374,10 +377,7 @@ mod tests {
         let actual = format!("{sid:?}");
 
         let expected = "StackSid { revision: 1, sub_authority_count: 3, identifier_authority: SidIdentifierAuthority { value: [0, 0, 0, 0, 0, 5] }, sub_authority: [21, 42, 1337] }";
-        assert_eq!(
-            actual, expected,
-            "Debug output does not match the exact expected format.\nActual:   {actual}\nExpected: {expected}",
-        );
+        assert_eq!(actual, expected);
     }
 
     proptest! {
@@ -391,6 +391,20 @@ mod tests {
         fn test_stack_sid_clone_from(mut sid in arb_stack_sid(), sid_source in arb_stack_sid()){
             sid.clone_from(&sid_source);
             prop_assert_eq!(sid, sid_source);
+        }
+        #[test]
+        fn test_as_sid_mut(mut sid in arb_stack_sid()){
+            let self_addr =ptr::from_mut(&mut sid).addr();
+            let sid_ref = sid.as_sid_mut();
+            prop_assert_eq!(ptr::from_mut(sid_ref).addr(), self_addr);
+            prop_assert_eq!(metadata(sid_ref), sid.sub_authority_count as usize);
+        }
+
+        #[test]
+        fn test_as_sid(sid in arb_stack_sid()){
+            let sid_ref = sid.as_sid();
+            prop_assert_eq!(ptr::from_ref(sid_ref).addr(), ptr::from_ref(&sid).addr());
+            prop_assert_eq!(metadata(sid_ref), sid.sub_authority_count as usize);
         }
     }
 }
