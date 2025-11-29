@@ -8,7 +8,7 @@ use crate::sid::MAX_SUBAUTHORITY_COUNT;
 use crate::utils::{sub_authority_size_guard, validate_sid_bytes_unaligned};
 use crate::{Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
-use core::mem::{MaybeUninit, size_of};
+use core::mem::{MaybeUninit, size_of, size_of_val};
 use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
@@ -272,6 +272,7 @@ impl From<&Sid> for StackSid {
         let binary_source = value.as_binary();
         let len = binary_source.len();
         let mem = uninit.as_mut_ptr().cast::<u8>();
+        debug_assert!(size_of_val(value) <= size_of::<Self>());
         // SAFETY: We know result is bigger than input
         unsafe {
             mem.copy_from_nonoverlapping(binary_source.as_ptr(), len);
