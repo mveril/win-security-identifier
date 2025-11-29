@@ -9,7 +9,7 @@ use crate::utils::{sub_authority_size_guard, validate_sid_bytes_unaligned};
 use crate::{Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
 use core::mem::MaybeUninit;
-use core::ptr::{self, copy_nonoverlapping};
+use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
 use parsing::{self, InvalidSidFormat};
@@ -99,7 +99,7 @@ impl StackSid {
         let array_ptr: *mut u32 = array.as_mut_ptr().cast();
         // Safety: We already check the length of sub_authority to be in 1..=15.
         unsafe {
-            copy_nonoverlapping(sub_authority.as_ptr(), array_ptr, sub_authority.len());
+            array_ptr.copy_from_nonoverlapping(sub_authority.as_ptr(), sub_authority.len());
         }
 
         Self {
@@ -196,7 +196,9 @@ impl StackSid {
         let mut sid = MaybeUninit::<Self>::uninit();
         // SAFETY: `StackSid` has max size of `Sid`
         unsafe {
-            ptr::copy_nonoverlapping(bytes.as_ptr(), sid.as_mut_ptr().cast::<u8>(), bytes.len());
+            sid.as_mut_ptr()
+                .cast::<u8>()
+                .copy_from_nonoverlapping(bytes.as_ptr(), bytes.len());
         }
         // SAFETY: Initialized by previous
         let sid = unsafe { sid.assume_init() };
@@ -233,11 +235,9 @@ impl Clone for StackSid {
         let len = binary_source.len();
         // SAFETY: StackSid size is max of Sid size
         unsafe {
-            ptr::copy_nonoverlapping(
-                binary_source.as_ptr(),
-                ptr::from_mut(self).cast::<u8>(),
-                len,
-            );
+            ptr::from_mut(self)
+                .cast::<u8>()
+                .copy_from_nonoverlapping(binary_source.as_ptr(), len);
         }
     }
 }
@@ -269,13 +269,12 @@ impl From<&Sid> for StackSid {
     #[inline]
     fn from(value: &Sid) -> Self {
         let mut uninit = MaybeUninit::<Self>::uninit();
+        let binary_source = value.as_binary();
+        let len = binary_source.len();
         let mem = uninit.as_mut_ptr().cast::<u8>();
         // SAFETY: We know result is bigger than input
         unsafe {
-            mem.copy_from_nonoverlapping(
-                ptr::from_ref(value).cast(),
-                value.get_current_min_layout().size(),
-            );
+            mem.copy_from_nonoverlapping(binary_source.as_ptr(), len);
         }
         // SAFETY: Initialized by the previous step
         unsafe { uninit.assume_init() }
