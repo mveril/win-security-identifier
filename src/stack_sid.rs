@@ -226,7 +226,12 @@ impl Clone for StackSid {
     fn clone_from(&mut self, source: &Self) {
         // Safety: Binary copy from another stackSid is safe
         let binary_source = source.as_binary();
+        debug_assert!(
+            binary_source.len() <= size_of::<StackSid>(),
+            "StackSid Size should be max size of Sid"
+        );
         let len = binary_source.len();
+        // SAFETY: StackSid size is max of Sid size
         unsafe {
             ptr::copy_nonoverlapping(
                 binary_source.as_ptr(),
