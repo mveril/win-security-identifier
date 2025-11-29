@@ -396,6 +396,7 @@ mod tests {
             sid.clone_from(&sid_source);
             prop_assert_eq!(sid, sid_source);
         }
+
         #[test]
         fn test_as_sid_mut(mut sid in arb_stack_sid()){
             let self_addr =ptr::from_mut(&mut sid).addr();
