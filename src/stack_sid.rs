@@ -15,7 +15,6 @@ use delegate::delegate;
 use parsing::{self, InvalidSidFormat};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 pub struct StackSid {
     /// The SID revision value, generally 1.
     pub revision: u8,
@@ -134,7 +133,7 @@ impl StackSid {
     /// This allows treating the fixed-size `StackSid` as a regular `Sid`
     /// with a trailing slice of sub-authorities.
     #[inline]
-    pub fn as_sid_mut(&mut self) -> &mut Sid {
+    pub const fn as_sid_mut(&mut self) -> &mut Sid {
         let raw: *mut () = ptr::from_mut(self).cast();
         // SAFETY: same justification as `as_sid`, but for a mutable reference.
         unsafe { &mut *from_raw_parts_mut(raw, self.sub_authority_count as usize) }
@@ -148,6 +147,12 @@ impl StackSid {
             #[must_use]
             #[inline]
             pub const fn as_binary(&self) -> &[u8];
+        }
+
+        to self.as_sid_mut() {
+            #[must_use]
+            #[inline]
+            pub const unsafe fn as_binary_mut(&mut self) -> &mut [u8];
         }
     }
 
@@ -190,6 +195,32 @@ impl StackSid {
         Ok(sid)
     }
 }
+
+impl core::fmt::Debug for StackSid {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct(stringify!(StackSid))
+            .field(stringify!(revision), &self.revision)
+            .field(stringify!(sub_authority_count), &self.sub_authority_count)
+            .field(stringify!(identifier_authority), &self.identifier_authority)
+            .field(stringify!(sub_authority), &self.get_sub_authorities())
+            .finish()
+    }
+}
+
+impl Clone for StackSid {
+    fn clone(&self) -> Self {
+        self.as_sid().into()
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        // Safety binary copy from another stackSid is safe
+        unsafe {
+            self.as_binary_mut().copy_from_slice(source.as_binary());
+        }
+    }
+}
+
+impl Copy for StackSid {}
 
 impl AsRef<Sid> for StackSid {
     #[inline]
@@ -268,10 +299,14 @@ impl PartialEq for StackSid {
     }
 }
 
+impl Eq for StackSid {}
+
 impl Hash for StackSid {
-    #[inline]
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.as_sid().hash(state);
+    delegate! {
+        to self.as_sid() {
+            #[inline]
+            fn hash<H: core::hash::Hasher>(&self, state: &mut H);
+        }
     }
 }
 
@@ -286,5 +321,27 @@ impl PartialEq<StackSid> for Sid {
     #[inline]
     fn eq(&self, other: &StackSid) -> bool {
         self.eq(other.as_sid())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn debug_output_is_exact() {
+        let sid = StackSid::try_new(
+            1,
+            SidIdentifierAuthority::NT_AUTHORITY,
+            &[21u32, 42u32, 1337u32],
+        )
+        .unwrap();
+
+        let actual = format!("{sid:?}");
+
+        let expected = "StackSid { revision: 1, sub_authority_count: 3, identifier_authority: SidIdentifierAuthority { value: [0, 0, 0, 0, 0, 5] }, sub_authority: [21, 42, 1337] }";
+        assert_eq!(
+            actual, expected,
+            "Debug output does not match the exact expected format.\nActual:   {actual}\nExpected: {expected}",
+        );
     }
 }
