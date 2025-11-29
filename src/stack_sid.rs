@@ -7,7 +7,7 @@ use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
 use crate::utils::{sub_authority_size_guard, validate_sid_bytes_unaligned};
 use crate::{Sid, SidIdentifierAuthority};
-use core::fmt::Display;
+use core::fmt::{self, Display};
 use core::mem::MaybeUninit;
 use core::ptr::{self, copy_nonoverlapping};
 use core::str::FromStr;
@@ -150,6 +150,14 @@ impl StackSid {
         }
 
         to self.as_sid_mut() {
+            /// Returns a `&mut [u8]` view over the **currently valid** minimal binary representation.
+            ///
+            /// This can be used for low-level, in-place updates when you know exactly what you are doing.
+            ///
+            /// # Safety
+            /// - Same preconditions as `as_binary`.
+            /// - Mutating the buffer must preserve SID invariants (e.g., do not desynchronize
+            ///   `sub_authority_count` and the tail length).
             #[must_use]
             #[inline]
             pub const unsafe fn as_binary_mut(&mut self) -> &mut [u8];
@@ -196,8 +204,9 @@ impl StackSid {
     }
 }
 
-impl core::fmt::Debug for StackSid {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Debug for StackSid {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(stringify!(StackSid))
             .field(stringify!(revision), &self.revision)
             .field(stringify!(sub_authority_count), &self.sub_authority_count)
