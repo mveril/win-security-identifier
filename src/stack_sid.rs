@@ -225,8 +225,14 @@ impl Clone for StackSid {
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         // Safety: Binary copy from another stackSid is safe
+        let binary_source = source.as_binary();
+        let len = binary_source.len();
         unsafe {
-            self.as_binary_mut().copy_from_slice(source.as_binary());
+            ptr::copy_nonoverlapping(
+                binary_source.as_ptr(),
+                ptr::from_mut(self).cast::<u8>(),
+                len,
+            );
         }
     }
 }
@@ -336,7 +342,22 @@ impl PartialEq<StackSid> for Sid {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use crate::arb_identifier_authority;
+
     use super::*;
+    use proptest::prelude::*;
+    pub fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
+        (
+            Just(1u8), // revision
+            arb_identifier_authority(),
+            proptest::collection::vec(any::<u32>(), 1..=15),
+        )
+            .prop_map(|(revision, identifier_authority, sub_authorities)| {
+                let subs = &sub_authorities.as_slice();
+                StackSid::try_new(revision, identifier_authority, subs)
+                    .expect("Failed to generate StackSid")
+            })
+    }
     #[test]
     fn debug_output_is_exact() {
         let sid = StackSid::try_new(
@@ -353,5 +374,19 @@ mod tests {
             actual, expected,
             "Debug output does not match the exact expected format.\nActual:   {actual}\nExpected: {expected}",
         );
+    }
+
+    proptest! {
+        #[test]
+        fn test_stack_sid_clone(sid in arb_stack_sid()){
+            prop_assert_eq!(sid.clone(), sid);
+
+        }
+
+        #[test]
+        fn test_stack_sid_clone_from(mut sid in arb_stack_sid(), sid_source in arb_stack_sid()){
+            sid.clone_from(&sid_source);
+            prop_assert_eq!(sid, sid_source)
+        }
     }
 }
