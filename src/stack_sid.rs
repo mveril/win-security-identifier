@@ -229,7 +229,7 @@ impl Clone for StackSid {
         // Safety: Binary copy from another stackSid is safe
         let binary_source = source.as_binary();
         debug_assert!(
-            binary_source.len() <= size_of::<StackSid>(),
+            binary_source.len() <= size_of::<Self>(),
             "StackSid Size should be max size of Sid"
         );
         let len = binary_source.len();
@@ -344,7 +344,7 @@ impl PartialEq<StackSid> for Sid {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use crate::arb_identifier_authority;
 
@@ -390,7 +390,7 @@ mod tests {
         #[test]
         fn test_stack_sid_clone_from(mut sid in arb_stack_sid(), sid_source in arb_stack_sid()){
             sid.clone_from(&sid_source);
-            prop_assert_eq!(sid, sid_source)
+            prop_assert_eq!(sid, sid_source);
         }
     }
 }
