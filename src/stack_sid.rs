@@ -233,7 +233,7 @@ impl Clone for StackSid {
             "StackSid Size should be max size of Sid"
         );
         let len = binary_source.len();
-        // SAFETY: StackSid size is max of Sid size
+        // SAFETY: Preconditon checked with debug_assert!
         unsafe {
             ptr::from_mut(self)
                 .cast::<u8>()
@@ -272,8 +272,11 @@ impl From<&Sid> for StackSid {
         let binary_source = value.as_binary();
         let len = binary_source.len();
         let mem = uninit.as_mut_ptr().cast::<u8>();
-        debug_assert!(size_of_val(value) <= size_of::<Self>());
-        // SAFETY: We know result is bigger than input
+        debug_assert!(
+            size_of_val(value) <= size_of::<Self>(),
+            "StackSid Size should be max size of Sid, it's not true for this value"
+        );
+        // SAFETY: precondition checked with debug_assert!
         unsafe {
             mem.copy_from_nonoverlapping(binary_source.as_ptr(), len);
         }
