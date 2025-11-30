@@ -16,7 +16,7 @@ use parsing::{self, InvalidSidFormat};
 
 #[repr(C)]
 pub struct StackSid {
-    /// The SID revision value, generally 1.
+    /// The SID revision value, (currently only 1 is supported).
     pub revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
@@ -35,10 +35,9 @@ impl StackSid {
     /// ```rust
     /// # use win_security_identifier::{StackSid, SidIdentifierAuthority};
     /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
-    /// let revision = 1u8;
     /// let ia = SidIdentifierAuthority::NT_AUTHORITY; // example ctor
     /// let subs = [32u32, 544u32];
-    /// let sid = StackSid::try_new(revision, ia, &subs)
+    /// let sid = StackSid::try_new(ia, &subs)
     ///     .expect("valid SID parts");
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
@@ -47,19 +46,12 @@ impl StackSid {
     #[must_use]
     #[inline]
     pub const fn try_new(
-        revision: u8,
         identifier_authority: SidIdentifierAuthority,
         sub_authority: &[u32],
     ) -> Option<Self> {
         if sub_authority_size_guard(sub_authority.len()) {
             // Safety: We checked the subauthority length to be in 1..=15.
-            unsafe {
-                Some(Self::new_unchecked(
-                    revision,
-                    identifier_authority,
-                    sub_authority,
-                ))
-            }
+            unsafe { Some(Self::new_unchecked(identifier_authority, sub_authority)) }
         } else {
             None
         }
@@ -77,7 +69,6 @@ impl StackSid {
     /// ```rust
     /// # use win_security_identifier::{StackSid, SidIdentifierAuthority};
     /// let sid = unsafe{StackSid::new_unchecked(
-    ///         1,
     ///         SidIdentifierAuthority::NT_AUTHORITY,
     ///         &[32u32, 544u32],
     ///     )};
@@ -88,7 +79,6 @@ impl StackSid {
     #[must_use]
     #[inline]
     pub const unsafe fn new_unchecked(
-        revision: u8,
         identifier_authority: SidIdentifierAuthority,
         sub_authority: &[u32],
     ) -> Self {
@@ -103,7 +93,7 @@ impl StackSid {
         }
 
         Self {
-            revision,
+            revision: Sid::REVISION,
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "truncation already checked before"
@@ -299,7 +289,6 @@ impl FromStr for StackSid {
             // SAFETY: All check are done by SidComponents and the debug assertion.
             unsafe {
                 Self::new_unchecked(
-                    cmp.revision,
                     SidIdentifierAuthority::new(cmp.identifier_authority),
                     cmp.sub_authority.as_slice(),
                 )
@@ -359,20 +348,17 @@ mod tests {
     use proptest::prelude::*;
     pub fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
         (
-            Just(1u8), // revision
             arb_identifier_authority(),
             proptest::collection::vec(any::<u32>(), 1..=15),
         )
-            .prop_map(|(revision, identifier_authority, sub_authorities)| {
+            .prop_map(|(identifier_authority, sub_authorities)| {
                 let subs = &sub_authorities.as_slice();
-                StackSid::try_new(revision, identifier_authority, subs)
-                    .expect("Failed to generate StackSid")
+                StackSid::try_new(identifier_authority, subs).expect("Failed to generate StackSid")
             })
     }
     #[test]
     fn debug_output_is_exact() {
         let sid = StackSid::try_new(
-            1,
             SidIdentifierAuthority::NT_AUTHORITY,
             &[21u32, 42u32, 1337u32],
         )

@@ -20,17 +20,25 @@ pub const fn sub_authority_size_guard(size: usize) -> bool {
 /// No references to possibly-unaligned typed fields are created.
 /// Everything is read from bytes using unaligned-safe operations.
 pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFormat> {
+    const REVISION_OFFSET: usize = offset_of!(Sid, revision);
+    const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
     let min_size = SidSizeInfo::MIN.get_layout().size();
     if buf.len() < min_size {
         return Err(InvalidSidFormat);
     }
 
-    let count_offset = offset_of!(Sid, sub_authority_count);
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "We know the revision_offset is in the bound (was checked by minimum size)"
+    )]
+    if buf[REVISION_OFFSET] != Sid::REVISION {
+        return Err(InvalidSidFormat);
+    }
     #[expect(
         clippy::indexing_slicing,
         reason = "We know the count_offset is in the bound (was checked by minimum size)"
     )]
-    let count = buf[count_offset];
+    let count = buf[COUNT_OFFSET];
 
     if !sub_authority_size_guard(count as usize) {
         return Err(InvalidSidFormat);

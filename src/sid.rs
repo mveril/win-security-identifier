@@ -55,7 +55,7 @@ use core::{
 #[repr(C)]
 #[derive(Debug)]
 pub struct Sid {
-    /// The SID revision value, generally 1.
+    /// The SID revision value, (currently only 1 is supported).
     pub revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
@@ -78,6 +78,8 @@ pub struct SidHead {
 pub const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 
 impl Sid {
+    /// The only valid revision value for now (No other sid format are defined by microsoft)
+    pub const REVISION: u8 = 1;
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
     ///
     /// The slice covers the header and the exact number of sub-authorities currently set
@@ -151,7 +153,7 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
-    /// let const_sid = ConstSid::<1>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [1]);
+    /// let const_sid = ConstSid::<1>::new(SidIdentifierAuthority::NT_AUTHORITY, [1]);
     /// let sid = const_sid.as_sid();
     /// let subs = sid.get_sub_authorities();
     /// assert_eq!(subs, &[1]);
@@ -194,11 +196,11 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, SidIdentifierAuthority, ConstSid};
-    /// # let const_sid = ConstSid::<1>::new(1,  SidIdentifierAuthority::NT_AUTHORITY, [20u32]);
+    /// # let const_sid = ConstSid::<1>::new(SidIdentifierAuthority::NT_AUTHORITY, [20u32]);
     /// # let bytes = const_sid.as_bytes();
     /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts and :
     /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");
-    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.revision, Sid::REVISION);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [20u32]);
     #[inline]
