@@ -510,6 +510,17 @@ pub mod test {
             let sid2: SecurityIdentifier = sid1.to_string().parse().unwrap();
             prop_assert_eq!(sid1, sid2);
         }
+
+        fn test_security_identifier_clone(sid in arb_security_identifier()){
+            prop_assert_eq!(sid.clone(), sid);
+
+        }
+
+        #[test]
+        fn test_security_identifier_clone_from(mut sid in arb_security_identifier(), sid_source in arb_security_identifier()){
+            sid.clone_from(&sid_source);
+            prop_assert_eq!(sid, sid_source);
+        }
     }
 
     #[cfg(all(feature = "std", windows))]

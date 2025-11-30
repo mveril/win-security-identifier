@@ -20,7 +20,7 @@ pub struct SidComponents {
 /// Error type returned when parsing a SID string fails due to an invalid format.
 ///
 /// This is used by `FromStr<SecurityIdentifier>`.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq, Hash)]
 pub struct InvalidSidFormat;
 
 impl Display for InvalidSidFormat {
