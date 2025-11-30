@@ -31,7 +31,7 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
         clippy::indexing_slicing,
         reason = "We know the revision_offset is in the bound (was checked by minimum size)"
     )]
-    if buf[REVISION_OFFSET] != 1 {
+    if buf[REVISION_OFFSET] != Sid::REVISION {
         return Err(InvalidSidFormat);
     }
     #[expect(

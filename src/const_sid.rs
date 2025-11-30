@@ -406,7 +406,7 @@ mod test {
     #[test]
     fn test_const_sid_macro() {
         let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
-        assert_eq!(sid.revision, 1);
+        assert_eq!(sid.revision, Sid::REVISION);
         assert_eq!(
             sid.identifier_authority,
             SidIdentifierAuthority::NT_AUTHORITY

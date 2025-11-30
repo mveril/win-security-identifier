@@ -60,7 +60,6 @@ impl SecurityIdentifier {
     /// Returns `None` if `sub_authority` length is out of bounds (not in 1..=15).
     ///
     /// # Parameters
-    /// - `revision`: SID revision (usually `1`).
     /// - `identifier_authority`: High-level authority (e.g. `NT_AUTHORITY`).
     /// - `sub_authority`: Slice of sub-authorities (1..=15 elements).
     ///
@@ -132,7 +131,7 @@ impl SecurityIdentifier {
         )]
         // Safety: We know the ptr is not null so we can write
         unsafe {
-            (*sid_ptr).revision = 1;
+            (*sid_ptr).revision = Sid::REVISION;
             (*sid_ptr).sub_authority_count = sub_authority_count;
             (*sid_ptr).identifier_authority = identifier_authority;
             (*sid_ptr).sub_authority.copy_from_slice(sub_authority);

@@ -16,7 +16,7 @@ use parsing::{self, InvalidSidFormat};
 
 #[repr(C)]
 pub struct StackSid {
-    /// The SID revision value, generally 1.
+    /// The SID revision value, (currently only 1 is supported).
     pub revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
@@ -93,7 +93,7 @@ impl StackSid {
         }
 
         Self {
-            revision: 1,
+            revision: Sid::REVISION,
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "truncation already checked before"
