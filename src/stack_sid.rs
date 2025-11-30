@@ -348,20 +348,17 @@ mod tests {
     use proptest::prelude::*;
     pub fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
         (
-            Just(1u8), // revision
             arb_identifier_authority(),
             proptest::collection::vec(any::<u32>(), 1..=15),
         )
-            .prop_map(|(revision, identifier_authority, sub_authorities)| {
+            .prop_map(|(identifier_authority, sub_authorities)| {
                 let subs = &sub_authorities.as_slice();
-                StackSid::try_new(revision, identifier_authority, subs)
-                    .expect("Failed to generate StackSid")
+                StackSid::try_new(identifier_authority, subs).expect("Failed to generate StackSid")
             })
     }
     #[test]
     fn debug_output_is_exact() {
         let sid = StackSid::try_new(
-            1,
             SidIdentifierAuthority::NT_AUTHORITY,
             &[21u32, 42u32, 1337u32],
         )
