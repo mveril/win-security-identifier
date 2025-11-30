@@ -36,7 +36,6 @@
 //! use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
 //!
 //! let sid = SecurityIdentifier::try_new(
-//!     1, // revision
 //!     SidIdentifierAuthority::NT_AUTHORITY,
 //!     [32u32, 544u32], // BUILTIN\Administrators => S-1-5-32-544
 //! ).expect("valid SID");
@@ -48,7 +47,6 @@
 //! use win_security_identifier::{ConstSid, SidIdentifierAuthority};
 //!
 //! const ADMIN: ConstSid<2> = ConstSid::new(
-//!     1,
 //!     SidIdentifierAuthority::NT_AUTHORITY,
 //!     [32, 544],
 //! );
@@ -78,7 +76,7 @@
 //! // ... obtain a `SecurityIdentifier` or `&Sid` named `sid`
 //! # use win_security_identifier::{SidIdentifierAuthority, ConstSid};
 //! # let sid = win_security_identifier::SecurityIdentifier::from(ConstSid::<2>::new(
-//! #     1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]
+//! #     SidIdentifierAuthority::NT_AUTHORITY, [32, 544]
 //! # ));
 //! let res = sid.lookup_local_sid().unwrap().unwrap();
 //! println!("{} => {}", sid, res.domain_name); // e.g. "MACHINE\\User"

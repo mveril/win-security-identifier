@@ -193,7 +193,7 @@ impl Serialize for DomainAndName {
 #[cfg(test)]
 mod test {
     const SID: ConstSid<3> =
-        ConstSid::new(1, crate::SidIdentifierAuthority::NT_AUTHORITY, [5, 32, 544]);
+        ConstSid::new(crate::SidIdentifierAuthority::NT_AUTHORITY, [5, 32, 544]);
     const BYTES: &[u8] = SID.as_sid().as_binary();
 
     use crate::ConstSid;

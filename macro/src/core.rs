@@ -9,7 +9,6 @@ pub fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
         .value()
         .parse()
         .map_err(|e| syn::Error::new_spanned(input, e))?;
-    let revision: u8 = components.revision;
     let authority = components.identifier_authority;
     let sub_authority = components.sub_authority.as_slice();
     let len = sub_authority.len();
@@ -22,7 +21,6 @@ pub fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
 
     let expanded = quote! {
         #root::ConstSid::<#len>::new(
-            #revision,
             [#(#authority),*].into(),
             [#(#sub_authority),*]
         )
