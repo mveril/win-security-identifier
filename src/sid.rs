@@ -200,7 +200,7 @@ impl Sid {
     /// # let bytes = const_sid.as_bytes();
     /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts and :
     /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");
-    /// assert_eq!(sid.revision, Self::Revision);
+    /// assert_eq!(sid.revision, Sid::REVISION);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.get_sub_authorities(), [20u32]);
     #[inline]
