@@ -58,6 +58,8 @@ mod test {
 
     /// Builds a raw SID buffer for the given sub-authority count.
     fn make_sid_bytes(count: u8) -> Vec<u8> {
+        const REVISION_OFFSET: usize = offset_of!(Sid, revision);
+        const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
         assert!(
             sub_authority_size_guard(count as usize),
             "Invalid count for make_sid_bytes()"
@@ -68,8 +70,8 @@ mod test {
             .get_layout();
 
         let mut buf = vec![0u8; layout.size()];
-        let count_offset = offset_of!(Sid, sub_authority_count);
-        buf[count_offset] = count;
+        buf[REVISION_OFFSET] = 1;
+        buf[COUNT_OFFSET] = count;
         buf
     }
 
