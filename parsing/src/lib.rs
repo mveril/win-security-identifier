@@ -47,7 +47,7 @@ impl FromStr for SidComponents {
             .parse::<u8>()
             .map_err(|_| InvalidSidFormat)?;
 
-        if revision != 1{
+        if revision != 1 {
             return Err(InvalidSidFormat);
         }
 
