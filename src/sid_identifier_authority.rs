@@ -84,7 +84,7 @@ pub mod test {
             SidIdentifierAuthority::from(bytes)
         }
     }
-    
+
     proptest! {
         #[test]
         fn test_convertion_identity(value in super::test::arb_identifier_authority()) {
