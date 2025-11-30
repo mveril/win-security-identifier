@@ -53,13 +53,13 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
 #[cfg(test)]
 mod test {
     use super::*;
-    use proptest::{prop_assert, prop_assert_eq, proptest};
+    use proptest::prelude::*;
     const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
+    const REVISION_OFFSET: usize = offset_of!(Sid, revision);
+    const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
 
     /// Builds a raw SID buffer for the given sub-authority count.
     fn make_sid_bytes(count: u8) -> Vec<u8> {
-        const REVISION_OFFSET: usize = offset_of!(Sid, revision);
-        const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
         assert!(
             sub_authority_size_guard(count as usize),
             "Invalid count for make_sid_bytes()"
@@ -70,7 +70,7 @@ mod test {
             .get_layout();
 
         let mut buf = vec![0u8; layout.size()];
-        buf[REVISION_OFFSET] = 1;
+        buf[REVISION_OFFSET] = Sid::REVISION;
         buf[COUNT_OFFSET] = count;
         buf
     }
@@ -82,7 +82,11 @@ mod test {
     #[test]
     fn rejects_too_small_buffer() {
         for len in 0..MIN_SIZE {
-            let buf = vec![0u8; len];
+            let mut buf = vec![0u8; len];
+            if let Some(first) = buf.first_mut() {
+                *first = 1;
+            }
+
             assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
         }
     }
@@ -169,6 +173,12 @@ mod test {
                 buf.extend(core::iter::repeat_n(0u8, extra));
             }
 
+            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+        }
+        #[test]
+        fn proptest_wrong_revision_is_rejected(revision in prop_oneof![Just(0u8), 2u8..], count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT){
+            let mut buf =make_sid_bytes(count);
+            buf[REVISION_OFFSET] = revision;
             prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
         }
     }
