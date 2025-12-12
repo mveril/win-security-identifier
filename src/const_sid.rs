@@ -54,8 +54,8 @@ where
     sub_authority_count: u8,
     /// 6-byte identifier authority.
     pub identifier_authority: SidIdentifierAuthority,
-    /// Fixed-size list of sub-authorities.
-    pub sub_authority: [u32; N],
+    /// Fixed-size list of sub authorities.
+    pub sub_authorities: [u32; N],
 }
 
 impl<const N: usize> Debug for ConstSid<N>
@@ -124,7 +124,7 @@ where
                 reason = "N is guaranteed to be lower than 256 because it is lower than 16"
             )]
             sub_authority_count: N as u8,
-            sub_authority,
+            sub_authorities: sub_authority,
             identifier_authority,
         }
     }
@@ -144,7 +144,7 @@ where
     #[must_use]
     pub const fn as_sid(&self) -> &Sid {
         // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
-        // matches `sub_authority.len()`. The header layout is compatible
+        // matches `sub_authorities.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
         unsafe { &*from_raw_parts(ptr::from_ref(self).cast::<()>(), N) }
     }
@@ -179,7 +179,7 @@ where
     #[inline]
     pub const fn as_sid_mut(&mut self) -> &mut Sid {
         // Safety: We construct a fat pointer to `Sid` with metadata `N` that
-        // matches `sub_authority.len()`. The header layout is compatible
+        // matches `sub_authorities.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
         unsafe { &mut *from_raw_parts_mut(ptr::from_mut(self).cast::<()>(), N) }
     }
@@ -232,7 +232,7 @@ where
             clippy::indexing_slicing,
             reason = "N is guaranteed to be greater than 0"
         )]
-        self.sub_authority[N - 1]
+        self.sub_authorities[N - 1]
     }
 }
 
@@ -327,7 +327,7 @@ where
                 reason = "N is guaranteed to be lower than 256 because it is lower than 16"
             )]
             sub_authority_count: N as u8,
-            sub_authority,
+            sub_authorities: sub_authority,
         })
     }
 }
@@ -363,7 +363,7 @@ where
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
         self.identifier_authority.hash(state);
-        Hash::hash_slice(&self.sub_authority[..], state);
+        Hash::hash_slice(&self.sub_authorities[..], state);
     }
 }
 
@@ -445,7 +445,7 @@ mod test {
             sid.identifier_authority,
             SidIdentifierAuthority::NT_AUTHORITY
         );
-        assert_eq!(sid.sub_authority, [32, 544]);
+        assert_eq!(sid.sub_authorities, [32, 544]);
     }
 
     #[test]

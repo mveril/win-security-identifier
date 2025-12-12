@@ -22,8 +22,8 @@ pub struct StackSid {
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
-    /// The SID sub-authority values.
-    sub_authority: [MaybeUninit<u32>; MAX_SUBAUTHORITY_COUNT as usize],
+    /// The SID sub authority values.
+    sub_authorities: [MaybeUninit<u32>; MAX_SUBAUTHORITY_COUNT as usize],
 }
 
 impl StackSid {
@@ -48,11 +48,11 @@ impl StackSid {
     #[inline]
     pub const fn try_new(
         identifier_authority: SidIdentifierAuthority,
-        sub_authority: &[u32],
+        sub_authorities: &[u32],
     ) -> Option<Self> {
-        if sub_authority_size_guard(sub_authority.len()) {
+        if sub_authority_size_guard(sub_authorities.len()) {
             // Safety: We checked the subauthority length to be in 1..=15.
-            unsafe { Some(Self::new_unchecked(identifier_authority, sub_authority)) }
+            unsafe { Some(Self::new_unchecked(identifier_authority, sub_authorities)) }
         } else {
             None
         }
@@ -61,7 +61,7 @@ impl StackSid {
     /// Creates a new `StackSid` from parts **without validation**.
     ///
     /// # Safety
-    /// - Caller must ensure `sub_authority` length is in `1..=15`.
+    /// - Caller must ensure `sub_authorities` length is in `1..=15`.
     /// - `identifier_authority` must be a valid Windows authority.
     ///
     /// Violating these preconditions results in undefined behavior or later panics.
@@ -81,7 +81,7 @@ impl StackSid {
     #[inline]
     pub const unsafe fn new_unchecked(
         identifier_authority: SidIdentifierAuthority,
-        sub_authority: &[u32],
+        sub_authorities: &[u32],
     ) -> Self {
         // initialize array of MaybeUninit
         let mut array = [MaybeUninit::uninit(); MAX_SUBAUTHORITY_COUNT as usize];
@@ -90,7 +90,7 @@ impl StackSid {
         let array_ptr: *mut u32 = array.as_mut_ptr().cast();
         // Safety: We already check the length of sub_authority to be in 1..=15.
         unsafe {
-            array_ptr.copy_from_nonoverlapping(sub_authority.as_ptr(), sub_authority.len());
+            array_ptr.copy_from_nonoverlapping(sub_authorities.as_ptr(), sub_authorities.len());
         }
 
         Self {
@@ -99,9 +99,9 @@ impl StackSid {
                 clippy::cast_possible_truncation,
                 reason = "truncation already checked before"
             )]
-            sub_authority_count: sub_authority.len() as u8,
+            sub_authority_count: sub_authorities.len() as u8,
             identifier_authority,
-            sub_authority: array,
+            sub_authorities: array,
         }
     }
 
@@ -293,14 +293,14 @@ impl FromStr for StackSid {
         parsing::SidComponents::from_str(s).map(|cmp| {
             debug_assert_eq!(
                 MAX_SUBAUTHORITY_COUNT as usize,
-                cmp.sub_authority.capacity(),
+                cmp.sub_authorities.capacity(),
                 "Verify sub_autority capacity is same as MAX_SUBAUTHORITY_COUNT"
             );
             // SAFETY: All check are done by SidComponents and the debug assertion.
             unsafe {
                 Self::new_unchecked(
                     SidIdentifierAuthority::new(cmp.identifier_authority),
-                    cmp.sub_authority.as_slice(),
+                    cmp.sub_authorities.as_slice(),
                 )
             }
         })

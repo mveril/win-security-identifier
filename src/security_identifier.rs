@@ -58,11 +58,11 @@ impl Debug for SecurityIdentifier {
 impl SecurityIdentifier {
     /// Creates a new `SecurityIdentifier` from parts, validating input.
     ///
-    /// Returns `None` if `sub_authority` length is out of bounds (not in 1..=15).
+    /// Returns `None` if `sub_authorities` length is out of bounds (not in 1..=15).
     ///
     /// # Parameters
     /// - `identifier_authority`: High-level authority (e.g. `NT_AUTHORITY`).
-    /// - `sub_authority`: Slice of sub-authorities (1..=15 elements).
+    /// - `sub_authorities`: Slice of sub-authorities (1..=15 elements).
     ///
     /// # Examples
     /// ```rust
@@ -79,18 +79,18 @@ impl SecurityIdentifier {
     #[inline]
     pub fn try_new<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
         identifier_authority: I,
-        sub_authority: S,
+        sub_authorities: S,
     ) -> Option<Self> {
-        let sub_authority = sub_authority.as_ref();
+        let sub_authorities = sub_authorities.as_ref();
         // SAFETY: sub_authority_count is correctly validated by guard.
-        sub_authority_size_guard(sub_authority.len())
-            .then_some(unsafe { Self::new_unchecked(identifier_authority, sub_authority) })
+        sub_authority_size_guard(sub_authorities.len())
+            .then_some(unsafe { Self::new_unchecked(identifier_authority, sub_authorities) })
     }
 
     /// Creates a new `SecurityIdentifier` from parts **without validation**.
     ///
     /// # Safety
-    /// - Caller must ensure `sub_authority` length is in `1..=15`.
+    /// - Caller must ensure `sub_authorities` length is in `1..=15`.
     /// - `identifier_authority` must be a valid Windows authority.
     ///
     /// Violating these preconditions results in undefined behavior or later panics.
@@ -112,14 +112,14 @@ impl SecurityIdentifier {
     #[inline]
     pub unsafe fn new_unchecked<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
         identifier_authority: I,
-        sub_authority: S,
+        sub_authorities: S,
     ) -> Self {
-        let sub_authority = sub_authority.as_ref();
+        let sub_authorities = sub_authorities.as_ref();
         #[expect(
             clippy::cast_possible_truncation,
             reason = "Precondition of sub_authority_is_checked in the doc."
         )]
-        let sub_authority_count = sub_authority.len() as u8;
+        let sub_authority_count = sub_authorities.len() as u8;
         let identifier_authority = identifier_authority.into();
         // SAFETY: sub_authority_count is validated by guard.
         let size_info = unsafe { SidSizeInfo::from_count(sub_authority_count).unwrap_unchecked() };
@@ -135,7 +135,7 @@ impl SecurityIdentifier {
             (*sid_ptr).revision = Sid::REVISION;
             (*sid_ptr).sub_authority_count = sub_authority_count;
             (*sid_ptr).identifier_authority = identifier_authority;
-            (*sid_ptr).sub_authority.copy_from_slice(sub_authority);
+            (*sid_ptr).sub_authorities.copy_from_slice(sub_authorities);
         }
         // Safety: all is written so we can assume init
         unsafe { uninit.assume_init() }
@@ -286,7 +286,7 @@ impl FromStr for SecurityIdentifier {
             unsafe {
                 Self::new_unchecked(
                     components.identifier_authority,
-                    components.sub_authority.as_slice(),
+                    components.sub_authorities.as_slice(),
                 )
             },
         )
