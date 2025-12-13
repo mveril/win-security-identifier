@@ -199,7 +199,7 @@ impl StackSid {
 
 impl Borrow<Sid> for StackSid {
     fn borrow(&self) -> &Sid {
-        return self.as_sid();
+        self.as_sid()
     }
 }
 
