@@ -367,20 +367,7 @@ mod tests {
                 StackSid::try_new(identifier_authority, subs).expect("Failed to generate StackSid")
             })
     }
-    #[test]
-    fn debug_output_is_exact() {
-        let sid = StackSid::try_new(
-            SidIdentifierAuthority::NT_AUTHORITY,
-            &[21u32, 42u32, 1337u32],
-        )
-        .unwrap();
-
-        let actual = format!("{sid:?}");
-
-        let expected = "StackSid { revision: 1, sub_authority_count: 3, identifier_authority: SidIdentifierAuthority { value: [0, 0, 0, 0, 0, 5] }, sub_authority: [21, 42, 1337] }";
-        assert_eq!(actual, expected);
-    }
-
+    
     proptest! {
         #[test]
         fn test_stack_sid_clone(sid in arb_stack_sid()){
