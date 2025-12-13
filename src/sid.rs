@@ -216,7 +216,7 @@ impl Sid {
 }
 
 impl Debug for Sid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         utils::debug_print(stringify!(Sid), self, f)
     }
 }

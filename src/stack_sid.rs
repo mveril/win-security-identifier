@@ -198,8 +198,16 @@ impl StackSid {
 }
 
 impl Borrow<Sid> for StackSid {
+    #[inline]
     fn borrow(&self) -> &Sid {
         self.as_sid()
+    }
+}
+
+impl BorrowMut<Sid> for StackSid {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
     }
 }
 

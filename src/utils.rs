@@ -185,8 +185,12 @@ mod test {
     }
 }
 
+#[expect(
+    clippy::inline_always,
+    reason = "It is used only one time for each file."
+)]
 #[inline(always)]
-pub(crate) fn debug_print<T: Borrow<Sid> + ?Sized>(
+pub fn debug_print<T: Borrow<Sid> + ?Sized>(
     struct_name: &str,
     sid: &T,
     f: &mut core::fmt::Formatter<'_>,
@@ -200,6 +204,6 @@ pub(crate) fn debug_print<T: Borrow<Sid> + ?Sized>(
             .field("sub_authority", &sid.get_sub_authorities())
             .finish()
     } else {
-        write!(f, "{}({})", struct_name, sid)
+        write!(f, "{struct_name}({sid})")
     }
 }

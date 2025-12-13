@@ -2,7 +2,7 @@
 use crate::SecurityIdentifier;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
-use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid, sid, utils};
+use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid, utils};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use alloc::borrow::ToOwned;
 #[cfg(has_ptr_metadata)]
@@ -65,7 +65,8 @@ impl<const N: usize> Debug for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         utils::debug_print(stringify!(ConstSid), self, f)
     }
 }
@@ -74,6 +75,7 @@ impl<const N: usize> Borrow<Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn borrow(&self) -> &Sid {
         self.as_sid()
     }
@@ -83,6 +85,7 @@ impl<const N: usize> BorrowMut<Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    #[inline]
     fn borrow_mut(&mut self) -> &mut Sid {
         self.as_sid_mut()
     }

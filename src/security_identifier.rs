@@ -51,7 +51,7 @@ pub struct SecurityIdentifier {
 impl Debug for SecurityIdentifier {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        utils::debug_print::<SecurityIdentifier>(stringify!(SecurityIdentifier), self, f)
+        utils::debug_print::<Self>(stringify!(SecurityIdentifier), self, f)
     }
 }
 
@@ -302,12 +302,14 @@ impl ToOwned for Sid {
 }
 
 impl Borrow<Sid> for SecurityIdentifier {
+    #[inline]
     fn borrow(&self) -> &Sid {
         self.as_sid()
     }
 }
 
 impl BorrowMut<Sid> for SecurityIdentifier {
+    #[inline]
     fn borrow_mut(&mut self) -> &mut Sid {
         self.as_sid_mut()
     }
