@@ -367,7 +367,7 @@ mod tests {
                 StackSid::try_new(identifier_authority, subs).expect("Failed to generate StackSid")
             })
     }
-    
+
     proptest! {
         #[test]
         fn test_stack_sid_clone(sid in arb_stack_sid()){
