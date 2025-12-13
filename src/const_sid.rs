@@ -2,16 +2,21 @@
 use crate::SecurityIdentifier;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
-use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid};
+use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid, sid, utils};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
-use ::alloc::borrow::ToOwned;
+use alloc::borrow::ToOwned;
 #[cfg(has_ptr_metadata)]
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
     array::TryFromSliceError,
+    borrow,
     fmt::{self, Display},
     hash::{self, Hash},
     ptr,
+};
+use core::{
+    borrow::{Borrow, BorrowMut},
+    fmt::Debug,
 };
 #[cfg(feature = "std")]
 use std::borrow::ToOwned;
@@ -40,7 +45,7 @@ use std::borrow::ToOwned;
 /// assert_eq!(ConstSid::<2>::try_from(owned.as_ref()).unwrap(), ADMIN_ALIAS);
 /// assert!(ConstSid::<3>::try_from(owned).is_err());
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct ConstSid<const N: usize>
 where
@@ -54,6 +59,33 @@ where
     pub identifier_authority: SidIdentifierAuthority,
     /// Fixed-size list of sub-authorities.
     pub sub_authority: [u32; N],
+}
+
+impl<const N: usize> Debug for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        utils::debug_print(stringify!(ConstSid), self, f)
+    }
+}
+
+impl<const N: usize> Borrow<Sid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    fn borrow(&self) -> &Sid {
+        self.as_sid()
+    }
+}
+
+impl<const N: usize> BorrowMut<Sid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    fn borrow_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
+    }
 }
 
 impl<const N: usize> AsRef<Sid> for ConstSid<N>
@@ -339,6 +371,8 @@ where
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
 mod test {
+    use crate::well_known;
+
     use super::*;
     #[cfg(feature = "std")]
     #[test]
@@ -412,5 +446,14 @@ mod test {
             SidIdentifierAuthority::NT_AUTHORITY
         );
         assert_eq!(sid.sub_authority, [32, 544]);
+    }
+
+    #[test]
+    fn test_debug() {
+        let sample_sid = well_known::NULL;
+        assert_eq!(
+            format!("{:?}", sample_sid),
+            format!("{:}(S-1-0-0)", stringify!(ConstSid)),
+        )
     }
 }
