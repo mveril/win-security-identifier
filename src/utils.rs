@@ -1,5 +1,5 @@
-use core::borrow::Borrow;
 use core::mem::offset_of;
+use core::{borrow::Borrow, fmt};
 
 use parsing::InvalidSidFormat;
 
@@ -48,6 +48,29 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
     }
 
     Ok(())
+}
+
+#[expect(
+    clippy::inline_always,
+    reason = "It is used only one time for each file."
+)]
+#[inline(always)]
+pub fn debug_print<T: Borrow<Sid> + ?Sized>(
+    struct_name: &str,
+    sid: &T,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    let sid = sid.borrow();
+    if f.alternate() {
+        f.debug_struct(struct_name)
+            .field("revision", &sid.revision)
+            .field("sub_authority_count", &sid.sub_authority_count)
+            .field("identifier_authority", &sid.identifier_authority)
+            .field("sub_authority", &sid.get_sub_authorities())
+            .finish()
+    } else {
+        write!(f, "{struct_name}({sid})")
+    }
 }
 
 #[allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -182,28 +205,5 @@ mod test {
             buf[REVISION_OFFSET] = revision;
             prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
         }
-    }
-}
-
-#[expect(
-    clippy::inline_always,
-    reason = "It is used only one time for each file."
-)]
-#[inline(always)]
-pub fn debug_print<T: Borrow<Sid> + ?Sized>(
-    struct_name: &str,
-    sid: &T,
-    f: &mut core::fmt::Formatter<'_>,
-) -> core::fmt::Result {
-    let sid = sid.borrow();
-    if f.alternate() {
-        f.debug_struct(struct_name)
-            .field("revision", &sid.revision)
-            .field("sub_authority_count", &sid.sub_authority_count)
-            .field("identifier_authority", &sid.identifier_authority)
-            .field("sub_authority", &sid.get_sub_authorities())
-            .finish()
-    } else {
-        write!(f, "{struct_name}({sid})")
     }
 }

@@ -9,14 +9,11 @@ use alloc::borrow::ToOwned;
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
     array::TryFromSliceError,
-    borrow,
+    borrow::{Borrow, BorrowMut},
+    fmt::Debug,
     fmt::{self, Display},
     hash::{self, Hash},
     ptr,
-};
-use core::{
-    borrow::{Borrow, BorrowMut},
-    fmt::Debug,
 };
 #[cfg(feature = "std")]
 use std::borrow::ToOwned;
@@ -66,7 +63,7 @@ where
     [u32; N]: SidLenValid,
 {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         utils::debug_print(stringify!(ConstSid), self, f)
     }
 }
@@ -455,8 +452,8 @@ mod test {
     fn test_debug() {
         let sample_sid = well_known::NULL;
         assert_eq!(
-            format!("{:?}", sample_sid),
+            format!("{sample_sid:?}"),
             format!("{:}(S-1-0-0)", stringify!(ConstSid)),
-        )
+        );
     }
 }

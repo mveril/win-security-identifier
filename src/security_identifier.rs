@@ -606,6 +606,6 @@ pub mod test {
         assert_eq!(
             format!("{:?}", SecurityIdentifier::from(sample_sid.as_sid())),
             format!("{:}(S-1-0-0)", stringify!(SecurityIdentifier)),
-        )
+        );
     }
 }

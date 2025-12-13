@@ -216,7 +216,8 @@ impl Sid {
 }
 
 impl Debug for Sid {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         utils::debug_print(stringify!(Sid), self, f)
     }
 }
@@ -438,6 +439,6 @@ mod tests {
         assert_eq!(
             format!("{:?}", sample_sid.as_sid()),
             format!("{:}(S-1-0-0)", stringify!(Sid)),
-        )
+        );
     }
 }

@@ -309,7 +309,7 @@ impl FromStr for StackSid {
 
 impl Display for StackSid {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_sid())
     }
 }
@@ -415,6 +415,6 @@ mod tests {
         assert_eq!(
             format!("{:?}", StackSid::from(sample_sid.as_sid())),
             format!("{:}(S-1-0-0)", stringify!(StackSid)),
-        )
+        );
     }
 }
