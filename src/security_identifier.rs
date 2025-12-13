@@ -3,16 +3,17 @@ use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
 use crate::StackSid;
+use crate::utils;
 use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{borrow::ToOwned, boxed::Box};
 use core::alloc::Layout;
-use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::mem::offset_of;
 use core::ops::Deref;
 mod maybe_uninit;
+use core::borrow::{Borrow, BorrowMut};
 use core::ops::DerefMut;
 use core::ptr;
 use core::str::FromStr;
@@ -50,7 +51,7 @@ pub struct SecurityIdentifier {
 impl Debug for SecurityIdentifier {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&*self.inner, f)
+        utils::debug_print::<Self>(stringify!(SecurityIdentifier), self, f)
     }
 }
 
@@ -301,11 +302,16 @@ impl ToOwned for Sid {
 }
 
 impl Borrow<Sid> for SecurityIdentifier {
-    delegate! {
-        to self.inner {
-            #[inline]
-            fn borrow(&self) -> &Sid;
-        }
+    #[inline]
+    fn borrow(&self) -> &Sid {
+        self.as_sid()
+    }
+}
+
+impl BorrowMut<Sid> for SecurityIdentifier {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
     }
 }
 
@@ -429,6 +435,7 @@ pub mod test {
     use super::super::sid_identifier_authority::test::arb_identifier_authority;
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfills_ptr::metadata;
+    use crate::well_known;
     use core::hash::Hash;
     use core::hash::Hasher;
     #[cfg(has_ptr_metadata)]
@@ -592,5 +599,13 @@ pub mod test {
             };
             assert_eq!(result, None, "SID is not valid: {result:?}");
         }
+    }
+    #[test]
+    fn test_debug() {
+        let sample_sid = well_known::NULL;
+        assert_eq!(
+            format!("{:?}", SecurityIdentifier::from(sample_sid.as_sid())),
+            format!("{:}(S-1-0-0)", stringify!(SecurityIdentifier)),
+        );
     }
 }

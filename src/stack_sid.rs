@@ -1,11 +1,12 @@
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
+use core::borrow::{Borrow, BorrowMut};
 use core::hash::Hash;
 #[cfg(has_ptr_metadata)]
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
-use crate::utils::{sub_authority_size_guard, validate_sid_bytes_unaligned};
+use crate::utils::{self, sub_authority_size_guard, validate_sid_bytes_unaligned};
 use crate::{Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
 use core::mem::{MaybeUninit, size_of, size_of_val};
@@ -196,15 +197,24 @@ impl StackSid {
     }
 }
 
+impl Borrow<Sid> for StackSid {
+    #[inline]
+    fn borrow(&self) -> &Sid {
+        self.as_sid()
+    }
+}
+
+impl BorrowMut<Sid> for StackSid {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
+    }
+}
+
 impl fmt::Debug for StackSid {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct(stringify!(StackSid))
-            .field(stringify!(revision), &self.revision)
-            .field(stringify!(sub_authority_count), &self.sub_authority_count)
-            .field(stringify!(identifier_authority), &self.identifier_authority)
-            .field(stringify!(sub_authority), &self.get_sub_authorities())
-            .finish()
+        utils::debug_print(stringify!(StackSid), self, f)
     }
 }
 
@@ -299,7 +309,7 @@ impl FromStr for StackSid {
 
 impl Display for StackSid {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_sid())
     }
 }
@@ -343,6 +353,7 @@ mod tests {
     use crate::arb_identifier_authority;
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfills_ptr::metadata;
+    use crate::well_known;
     #[cfg(has_ptr_metadata)]
     use core::ptr::metadata;
     use proptest::prelude::*;
@@ -355,19 +366,6 @@ mod tests {
                 let subs = &sub_authorities.as_slice();
                 StackSid::try_new(identifier_authority, subs).expect("Failed to generate StackSid")
             })
-    }
-    #[test]
-    fn debug_output_is_exact() {
-        let sid = StackSid::try_new(
-            SidIdentifierAuthority::NT_AUTHORITY,
-            &[21u32, 42u32, 1337u32],
-        )
-        .unwrap();
-
-        let actual = format!("{sid:?}");
-
-        let expected = "StackSid { revision: 1, sub_authority_count: 3, identifier_authority: SidIdentifierAuthority { value: [0, 0, 0, 0, 0, 5] }, sub_authority: [21, 42, 1337] }";
-        assert_eq!(actual, expected);
     }
 
     proptest! {
@@ -397,5 +395,13 @@ mod tests {
             prop_assert_eq!(ptr::from_ref(sid_ref).addr(), ptr::from_ref(&sid).addr());
             prop_assert_eq!(metadata(sid_ref), sid.sub_authority_count as usize);
         }
+    }
+    #[test]
+    fn test_debug() {
+        let sample_sid = well_known::NULL;
+        assert_eq!(
+            format!("{:?}", StackSid::from(sample_sid.as_sid())),
+            format!("{:}(S-1-0-0)", stringify!(StackSid)),
+        );
     }
 }

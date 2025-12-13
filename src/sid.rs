@@ -15,6 +15,7 @@ mod windows;
 pub use windows::sid_lookup;
 
 use crate::InvalidSidFormat;
+use crate::utils;
 use crate::utils::validate_sid_bytes_unaligned;
 
 pub use parsing::MAX_SUBAUTHORITY_COUNT;
@@ -53,7 +54,6 @@ use core::{
 ///
 /// Instances are typically created and owned by a safe wrapper (e.g. `SecurityIdentifier`).
 #[repr(C)]
-#[derive(Debug)]
 pub struct Sid {
     /// The SID revision value, (currently only 1 is supported).
     pub revision: u8,
@@ -215,7 +215,12 @@ impl Sid {
     }
 }
 
-// --- Standard trait impls intentionally left undocumented (per your request) ---
+impl Debug for Sid {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        utils::debug_print(stringify!(Sid), self, f)
+    }
+}
 
 impl Display for Sid {
     #[inline]
@@ -262,6 +267,7 @@ impl Hash for Sid {
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[cfg(test)]
 mod tests {
+    use crate::well_known;
     #[cfg(feature = "alloc")]
     use crate::{SecurityIdentifier, arb_security_identifier};
     use core::hash::Hasher;
@@ -425,5 +431,14 @@ mod tests {
                 }
 
         }
+    }
+
+    #[test]
+    fn test_debug() {
+        let sample_sid = well_known::NULL;
+        assert_eq!(
+            format!("{:?}", sample_sid.as_sid()),
+            format!("{:}(S-1-0-0)", stringify!(Sid)),
+        );
     }
 }
