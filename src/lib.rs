@@ -26,7 +26,7 @@
 //!
 //! ## Layout & ABI
 //! The memory layout of [`Sid`] matches Windows: a `repr(C)` header followed by
-//! `sub_authority_count` 32-bit sub-authorities. Use [`Sid::current_min_layout`]
+//! `sub_authority_count` 32-bit sub-authorities. Use [`Sid::min_layout`]
 //! to compute the minimal [`Layout`] for a given instance. [`SecurityIdentifier`]
 //! uses this to allocate correctly.
 //!
@@ -98,14 +98,14 @@
 mod security_identifier;
 mod sid;
 
+#[cfg(doc)]
+use core::alloc::Layout;
 #[cfg(all(windows, feature = "std"))]
 pub use ext::{GetCurrentSid, TokenError};
 #[cfg(feature = "alloc")]
 pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]
 pub use sid::sid_lookup;
-#[cfg(doc)]
-pub use std::alloc::Layout;
 mod ext;
 
 #[cfg(not(has_ptr_metadata))]
