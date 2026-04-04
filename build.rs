@@ -8,14 +8,6 @@ fn main() {
         "has_ptr_metadata",
         true,
     );
-
-    // Detect Layout::for_value_raw (expression presence)
-    check_feature(
-        "layout_for_ptr",
-        "std::alloc::Layout::for_value_raw::<[u8]>(std::ptr::null())",
-        "has_layout_for_ptr",
-        false,
-    );
 }
 
 fn check_feature(feature_name: &str, probe_expr: &str, cfg_str: &str, is_trait: bool) {

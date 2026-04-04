@@ -53,6 +53,7 @@ use win_security_identifier::{
 };
 
 let sid = SecurityIdentifier::try_new(
+    1,
     SidIdentifierAuthority::NT_AUTHORITY,
     &[32u32, 544u32],
 ).unwrap();

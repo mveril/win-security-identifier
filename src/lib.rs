@@ -93,7 +93,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(needs_ptr_metadata_feature, feature(ptr_metadata))]
-#![cfg_attr(needs_layout_for_ptr_feature, feature(layout_for_ptr))]
 #[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
