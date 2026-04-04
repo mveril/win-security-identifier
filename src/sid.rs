@@ -91,19 +91,19 @@ impl Sid {
     /// let const_sid = well_known::BUILTIN_ADMINISTRATORS;
     /// let sid: &Sid = const_sid.as_ref();
     /// unsafe {
-    ///     let bytes = sid.as_binary();
+    ///     let bytes = sid.as_bytes();
     ///     assert_eq!(bytes, [1, 2, 0, 0, 0, 0, 0, 5, 32, 0, 0, 0, 32, 2, 0, 0]);
     /// }
     /// ```
     #[inline]
     #[must_use]
-    pub const fn as_binary(&self) -> &[u8] {
+    pub const fn as_bytes(&self) -> &[u8] {
         // Safety:
         // - The instance must be fully initialized and backed by a valid allocation large enough
         //   for the computed layout (see `get_current_min_layout`).
         // - The lifetime of the returned slice is tied to `&self`.
         unsafe {
-            let layout = self.get_current_min_layout();
+            let layout = self.min_layout();
             let len = layout.size();
             slice::from_raw_parts(core::ptr::from_ref(self).cast::<u8>(), len)
         }
@@ -130,16 +130,16 @@ impl Sid {
     /// This can be used for low-level, in-place updates when you know exactly what you are doing.
     ///
     /// # Safety
-    /// - Same preconditions as `as_binary`.
+    /// - Same preconditions as `as_bytes`.
     /// - Mutating the buffer must preserve SID invariants (e.g., do not desynchronize
     ///   `sub_authority_count` and the tail length).
     #[allow(dead_code)]
-    pub(crate) const unsafe fn as_binary_mut(&mut self) -> &mut [u8] {
+    pub(crate) const unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
         // Safety: Precondition definied in the method doc.
         unsafe {
             slice::from_raw_parts_mut(
                 core::ptr::from_ref(self).cast_mut().cast::<u8>(),
-                self.get_current_min_layout().size(),
+                self.min_layout().size(),
             )
         }
     }
@@ -160,7 +160,7 @@ impl Sid {
     /// ```
     #[must_use]
     #[inline]
-    pub const fn get_sub_authorities(&self) -> &[u32] {
+    pub const fn sub_authorities(&self) -> &[u32] {
         // Safety: self is valid and fully initialized.
         unsafe {
             slice::from_raw_parts(
@@ -179,9 +179,9 @@ impl Sid {
     /// - interoperate with low-level allocators.
     #[must_use]
     #[inline]
-    pub const fn get_current_min_layout(&self) -> Layout {
+    pub const fn min_layout(&self) -> Layout {
         if let Some(info) = SidSizeInfo::from_count(self.sub_authority_count) {
-            info.get_layout()
+            info.layout()
         } else {
             unreachable!()
         }
@@ -239,7 +239,7 @@ impl Display for Sid {
         }
 
         // SubAuthorities
-        for &sub_auth in self.get_sub_authorities() {
+        for &sub_auth in self.sub_authorities() {
             write!(f, "-{sub_auth}")?;
         }
         Ok(())
@@ -249,7 +249,7 @@ impl Display for Sid {
 impl PartialEq for Sid {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.as_binary() == other.as_binary()
+        self.as_bytes() == other.as_bytes()
     }
 }
 
@@ -260,7 +260,7 @@ impl Hash for Sid {
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
         self.identifier_authority.hash(state);
-        Hash::hash_slice(self.get_sub_authorities(), state);
+        Hash::hash_slice(self.sub_authorities(), state);
     }
 }
 
@@ -311,7 +311,7 @@ mod tests {
 
         #[test]
         fn sid_sub_authorities_len(sid in arb_security_identifier()) {
-            let subs = sid.get_sub_authorities();
+            let subs = sid.sub_authorities();
             prop_assert_eq!(subs.len(), sid.sub_authority_count as usize);
         }
     }

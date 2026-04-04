@@ -28,7 +28,7 @@ impl SidSizeInfo {
 
     #[inline]
     #[allow(dead_code)]
-    pub const fn get_sub_authority_count(&self) -> u8 {
+    pub const fn sub_authority_count(&self) -> u8 {
         self.sub_authority_count
     }
 
@@ -39,8 +39,8 @@ impl SidSizeInfo {
     /// Returns `None` if the size is invalid.
     #[allow(dead_code, reason = "useful method even if not used at this point")]
     pub const fn from_full_size(size: usize) -> Option<Self> {
-        const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
-        const MAX_SIZE: usize = SidSizeInfo::MAX.get_layout().size();
+        const MIN_SIZE: usize = SidSizeInfo::MIN.layout().size();
+        const MAX_SIZE: usize = SidSizeInfo::MAX.layout().size();
         if MAX_SIZE < size || size < MIN_SIZE {
             return None;
         }
@@ -62,7 +62,7 @@ impl SidSizeInfo {
         Self::from_count(sub_authority_count as u8)
     }
 
-    pub const fn get_layout(&self) -> Layout {
+    pub const fn layout(&self) -> Layout {
         let head: Layout = Layout::new::<SidHead>();
         let Ok(dyn_layout) = Layout::array::<u32>(self.sub_authority_count as usize) else {
             unreachable!()
@@ -104,7 +104,7 @@ mod test {
         #[test]
         fn prop_full_size_and_from_full_size(sub_authority_count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT) {
             let info = SidSizeInfo::from_count(sub_authority_count).unwrap();
-            let size = info.get_layout().size();
+            let size = info.layout().size();
             let reconstructed = SidSizeInfo::from_full_size(size);
             prop_assert_eq!(info, reconstructed.unwrap());
         }
@@ -112,7 +112,7 @@ mod test {
         #[test]
         fn prop_layout_properties(sub_authority_count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT) {
             let info = SidSizeInfo::from_count(sub_authority_count).unwrap();
-            let layout = info.get_layout();
+            let layout = info.layout();
             let expected_align = align_of::<u32>();
             prop_assert_eq!(layout.size(), SID_HEAD_SIZE + (info.sub_authority_count as usize) * size_of::<u32>());
             prop_assert_eq!(layout.align(), expected_align);
@@ -147,14 +147,14 @@ mod test {
         fn test_layout_matches_windows_sid() {
             // Par convention, un SID Windows "classique" a 1 sub-authority.
             let info = SidSizeInfo::from_count(1).unwrap();
-            assert_eq!(Layout::new::<SID>(), info.get_layout());
+            assert_eq!(Layout::new::<SID>(), info.layout());
         }
         #[cfg(feature = "std")]
         proptest! {
             #[test]
             fn test_prop_full_size_compare_windows(sub_authority_count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT) {
                 let info = SidSizeInfo::from_count(sub_authority_count ).unwrap();
-                let size = info.get_layout().size();
+                let size = info.layout().size();
                 // SAFETY: if count is correct (between 1 and 15)
                 let winsize = unsafe {
                     GetSidLengthRequired(sub_authority_count)

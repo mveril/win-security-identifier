@@ -196,7 +196,7 @@ impl SecurityIdentifier {
             ptr::copy_nonoverlapping(
                 bytes.as_ptr(),
                 uninit.as_mut_ptr().cast::<u8>(),
-                size_info.get_layout().size(),
+                size_info.layout().size(),
             );
         }
         // Safety: all is written so we can init.
@@ -269,7 +269,7 @@ impl TryFrom<&[u8]> for SecurityIdentifier {
 impl<'a> From<&'a Sid> for SecurityIdentifier {
     #[inline]
     fn from(value: &'a Sid) -> Self {
-        let binary = value.as_binary();
+        let binary = value.as_bytes();
         // Safety: sub_authority_count is known to be valid because `self` is valid.
         unsafe { Self::from_bytes_unchecked(binary) }
     }
@@ -360,7 +360,7 @@ impl Clone for SecurityIdentifier {
         if Layout::for_value(self.as_sid()) == Layout::for_value(source.as_sid()) {
             // Safety: We checked layout is ok
             unsafe {
-                self.as_binary_mut().copy_from_slice(source.as_binary());
+                self.as_bytes_mut().copy_from_slice(source.as_bytes());
             }
         } else {
             *self = source.clone();
@@ -463,7 +463,7 @@ pub mod test {
             let sid: &Sid = security_identifier.as_ref();
 
             // Check length of sub_authorities
-            assert_eq!(sid.get_sub_authorities().len(), sid.sub_authority_count as usize);
+            assert_eq!(sid.sub_authorities().len(), sid.sub_authority_count as usize);
 
             // Display format: commence par S-1-
             let disp = format!("{sid}");
@@ -500,14 +500,14 @@ pub mod test {
         #[test]
         fn test_sub_authority_slice_bounds(security_identifier in arb_security_identifier()) {
             let sid: &Sid = &security_identifier;
-            let subs = sid.get_sub_authorities();
+            let subs = sid.sub_authorities();
             assert!(!subs.is_empty() && subs.len() <= 15, "sub_authorities length must be in 1..=15");
         }
 
          #[test]
         fn test_ptr_metadata(security_identifier in arb_security_identifier()) {
             let sid: &Sid = &security_identifier;
-            prop_assert_eq!(sid.sub_authority_count as usize, sid.get_sub_authorities().len());
+            prop_assert_eq!(sid.sub_authority_count as usize, sid.sub_authorities().len());
             prop_assert_eq!(sid.sub_authority_count as usize, metadata(sid));
         }
 
@@ -545,7 +545,7 @@ pub mod test {
         proptest! {
             #[test]
             fn test_init_sid_matches_rust_bytes(sid in arb_security_identifier()) {
-                let subauth = sid.get_sub_authorities();
+                let subauth = sid.sub_authorities();
                 #[expect(clippy::cast_possible_truncation, reason="No truncation here because of range of subathority is between 1-15")]
                 let n = subauth.len() as u8;
                 // SAFETY: GetSidLengthRequired is safe for sid Length
@@ -572,7 +572,7 @@ pub mod test {
                     let win_len = GetLengthSid(sid_ptr.cast());
                     let win_bytes = slice::from_raw_parts(sid_ptr as *const u8, win_len as usize);
 
-                    let rust_bytes = sid.as_binary();
+                    let rust_bytes = sid.as_bytes();
                     prop_assert_eq!(
                         win_bytes,
                         rust_bytes,

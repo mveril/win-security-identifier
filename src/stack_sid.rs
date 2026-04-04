@@ -134,10 +134,10 @@ impl StackSid {
         to self.as_sid() {
             #[must_use]
             #[inline]
-            pub const fn get_sub_authorities(&self) -> &[u32];
+            pub const fn sub_authorities(&self) -> &[u32];
             #[must_use]
             #[inline]
-            pub const fn as_binary(&self) -> &[u8];
+            pub const fn as_bytes(&self) -> &[u8];
         }
 
         to self.as_sid_mut() {
@@ -146,12 +146,12 @@ impl StackSid {
             /// This can be used for low-level, in-place updates when you know exactly what you are doing.
             ///
             /// # Safety
-            /// - Same preconditions as `as_binary`.
+            /// - Same preconditions as `as_bytes`.
             /// - Mutating the buffer must preserve SID invariants (e.g., do not desynchronize
             ///   `sub_authority_count` and the tail length).
             #[must_use]
             #[inline]
-            pub const unsafe fn as_binary_mut(&mut self) -> &mut [u8];
+            pub const unsafe fn as_bytes_mut(&mut self) -> &mut [u8];
         }
     }
 
@@ -227,7 +227,7 @@ impl Clone for StackSid {
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         // Safety: Binary copy from another stackSid is safe
-        let binary_source = source.as_binary();
+        let binary_source = source.as_bytes();
         debug_assert!(
             binary_source.len() <= size_of::<Self>(),
             "StackSid Size should be max size of Sid"
@@ -252,7 +252,7 @@ impl AsRef<Sid> for StackSid {
 impl AsRef<[u8]> for StackSid {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.as_binary()
+        self.as_bytes()
     }
 }
 
@@ -269,7 +269,7 @@ impl From<&Sid> for StackSid {
     #[inline]
     fn from(value: &Sid) -> Self {
         let mut uninit = MaybeUninit::<Self>::uninit();
-        let binary_source = value.as_binary();
+        let binary_source = value.as_bytes();
         let len = binary_source.len();
         let mem = uninit.as_mut_ptr().cast::<u8>();
         debug_assert!(

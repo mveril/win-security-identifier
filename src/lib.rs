@@ -11,7 +11,7 @@
 //! - [`SidIdentifierAuthority`]: the 6-byte authority component of SIDs.
 //!
 //! ## Overview
-//! - **Zero-copy access** to the binary representation via [`Sid::as_binary`].
+//! - **Zero-copy access** to the binary representation via [`Sid::as_bytes`].
 //! - **Ownership & cloning** via [`SecurityIdentifier`] which manages allocation
 //!   and deallocation safely.
 //! - **Const construction** via [`ConstSid`], ideal for well-known SIDs.
@@ -21,7 +21,7 @@
 //! - [`Sid`] is a layout-sensitive DST; it is meant to be **owned** by higher-level
 //!   types like [`SecurityIdentifier`]. Creating malformed instances or using
 //!   buffers with the wrong size is **undefined behavior**.
-//! - Functions marked `unsafe` (e.g., [`Sid::as_binary`]) require that the backing
+//! - Functions marked `unsafe` (e.g., [`Sid::as_bytes`]) require that the backing
 //!   allocation and invariants are respected. See each item’s `# Safety` section.
 //!
 //! ## Layout & ABI
