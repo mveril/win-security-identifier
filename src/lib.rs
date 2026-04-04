@@ -26,7 +26,7 @@
 //!
 //! ## Layout & ABI
 //! The memory layout of [`Sid`] matches Windows: a `repr(C)` header followed by
-//! `sub_authority_count` 32-bit sub-authorities. Use [`Sid::get_current_min_layout`]
+//! `sub_authority_count` 32-bit sub-authorities. Use [`Sid::current_min_layout`]
 //! to compute the minimal [`Layout`] for a given instance. [`SecurityIdentifier`]
 //! uses this to allocate correctly.
 //!

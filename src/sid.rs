@@ -100,7 +100,7 @@ impl Sid {
     pub const fn as_bytes(&self) -> &[u8] {
         // Safety:
         // - The instance must be fully initialized and backed by a valid allocation large enough
-        //   for the computed layout (see `get_current_min_layout`).
+        //   for the computed layout (see [`current_min_layout`]).
         // - The lifetime of the returned slice is tied to `&self`.
         unsafe {
             let layout = self.min_layout();
