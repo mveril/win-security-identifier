@@ -41,14 +41,14 @@ use core::{
 /// - `revision`: SID revision (commonly `1`),
 /// - `sub_authority_count`: number of [u32] elements in the trailing slice,
 /// - `identifier_authority`: 6-byte identifier authority,
-/// - `sub_authority`: trailing slice of [u32] elements (length = `sub_authority_count`).
+/// - `sub_authorities`: trailing slice of [u32] elements (length = `sub_authority_count`).
 ///
 /// # Layout
 /// The layout matches the Windows SID memory representation:
 /// a fixed header followed by `sub_authority_count` 32-bit values.
 ///
 /// # Invariants
-/// - `sub_authority` length equals `sub_authority_count`.
+/// - `sub_authorities` length equals `sub_authority_count`.
 /// - `sub_authority_count` ∈ 1..=15 for valid Windows SIDs.
 /// - The allocation size must be consistent with `SidSizeInfo`.
 ///
@@ -60,8 +60,8 @@ pub struct Sid {
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
-    /// The SID sub-authority values.
-    pub sub_authority: [u32],
+    /// The SID sub authority values.
+    pub sub_authorities: [u32],
 }
 
 /// Fixed-size header of a SID (no trailing sub-authorities).
@@ -164,7 +164,7 @@ impl Sid {
         // Safety: self is valid and fully initialized.
         unsafe {
             slice::from_raw_parts(
-                self.sub_authority.as_ptr(),
+                self.sub_authorities.as_ptr(),
                 self.sub_authority_count as usize,
             )
         }
