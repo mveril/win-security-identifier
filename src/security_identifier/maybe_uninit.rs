@@ -23,12 +23,12 @@ pub(super) struct MaybeUninitSecurityIdentifier {
 impl MaybeUninitSecurityIdentifier {
     /// Allocate uninitialized storage for a `Sid` with the given size info.
     pub fn alloc(size_info: &SidSizeInfo) -> Self {
-        let layout = size_info.get_layout();
+        let layout = size_info.layout();
 
         // SAFETY: `layout` is a valid non-zero-sized layout for a `Sid` value.
         let mem_ptr = unsafe { alloc::alloc(layout) };
         let base = NonNull::new(mem_ptr).unwrap_or_else(|| alloc::handle_alloc_error(layout));
-        let sub_authority_count = size_info.get_sub_authority_count();
+        let sub_authority_count = size_info.sub_authority_count();
 
         Self {
             base,
