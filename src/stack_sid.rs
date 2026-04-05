@@ -138,6 +138,9 @@ impl StackSid {
             #[must_use]
             #[inline]
             pub const fn as_bytes(&self) -> &[u8];
+            #[must_use]
+            #[inline]
+            pub const fn rid(&self) -> u32;
         }
 
         to self.as_sid_mut() {
