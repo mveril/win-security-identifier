@@ -128,6 +128,23 @@ where
             identifier_authority,
         }
     }
+    /// Returns the RID (Relative Identifier), which is the last sub-authority in the SID.
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
+    /// let const_sid = ConstSid::<3>::new(SidIdentifierAuthority::NT_AUTHORITY, [1, 2, 3]);
+    /// let sid = const_sid.as_sid();
+    /// assert_eq!(sid.rid(), 3);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn rid(&self) -> u32 {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "N is guaranteed to be greater than 0"
+        )]
+        self.sub_authorities[N - 1]
+    }
 
     /// Returns a reference to this `ConstSid` as a dynamically-sized [`Sid`].
     ///
@@ -212,27 +229,6 @@ where
         // Safety: The layout of `ConstSid` is known and stable, and we are
         // creating a slice from a pointer to the start of the structure.
         unsafe { core::slice::from_raw_parts(binary_ptr, size_of::<Self>()) }
-    }
-
-    /// Returns the last sub-authority value (Relative Identifier, or RID) of this [`ConstSid`].
-    ///
-    /// The RID is commonly used to identify a specific user, group, or entity within a domain,
-    /// and is the last element in the sub-authority array.
-    ///
-    /// # Examples
-    /// ```rust
-    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
-    /// let sid = ConstSid::<2>::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
-    /// assert_eq!(sid.rid(), 544);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn rid(&self) -> u32 {
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "N is guaranteed to be greater than 0"
-        )]
-        self.sub_authorities[N - 1]
     }
 }
 
