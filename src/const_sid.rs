@@ -318,7 +318,7 @@ where
     fn try_from(value: &Sid) -> Result<Self, Self::Error> {
         let revision = value.revision;
         let identifier_authority = value.identifier_authority;
-        let sub_authority: [u32; N] = value.get_sub_authorities().try_into()?;
+        let sub_authority: [u32; N] = value.sub_authorities().try_into()?;
         Ok(Self {
             revision,
             identifier_authority,
@@ -396,7 +396,7 @@ mod test {
         use crate::SidSizeInfo;
         use core::alloc::Layout;
         let size = SidSizeInfo::from_count(1).unwrap();
-        let layout = size.get_layout();
+        let layout = size.layout();
         assert_eq!(Layout::new::<ConstSid<1>>(), layout);
     }
     #[cfg(feature = "macro")]

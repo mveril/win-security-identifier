@@ -34,7 +34,7 @@ impl Serialize for Sid {
                 }
             }
         } else {
-            serializer.serialize_bytes(self.as_binary())
+            serializer.serialize_bytes(self.as_bytes())
         }
     }
 }
@@ -194,7 +194,7 @@ impl Serialize for DomainAndName {
 mod test {
     const SID: ConstSid<3> =
         ConstSid::new(crate::SidIdentifierAuthority::NT_AUTHORITY, [5, 32, 544]);
-    const BYTES: &[u8] = SID.as_sid().as_binary();
+    const BYTES: &[u8] = SID.as_sid().as_bytes();
 
     use crate::ConstSid;
     use serde_test::{self, Configure, Token};

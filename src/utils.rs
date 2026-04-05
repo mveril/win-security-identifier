@@ -16,7 +16,7 @@ pub const fn sub_authority_size_guard(size: usize) -> bool {
 pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFormat> {
     const REVISION_OFFSET: usize = offset_of!(Sid, revision);
     const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
-    const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
+    const MIN_SIZE: usize = SidSizeInfo::MIN.layout().size();
     if buf.len() < MIN_SIZE {
         return Err(InvalidSidFormat);
     }
@@ -40,7 +40,7 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
 
     // SAFETY: size already validated
     let size = unsafe { SidSizeInfo::from_count(count).unwrap_unchecked() }
-        .get_layout()
+        .layout()
         .size();
 
     if buf.len() != size {
@@ -66,7 +66,7 @@ pub fn debug_print<T: Borrow<Sid> + ?Sized>(
             .field("revision", &sid.revision)
             .field("sub_authority_count", &sid.sub_authority_count)
             .field("identifier_authority", &sid.identifier_authority)
-            .field("sub_authority", &sid.get_sub_authorities())
+            .field("sub_authority", &sid.sub_authorities())
             .finish()
     } else {
         write!(f, "{struct_name}({sid})")
@@ -78,7 +78,7 @@ pub fn debug_print<T: Borrow<Sid> + ?Sized>(
 mod test {
     use super::*;
     use proptest::prelude::*;
-    const MIN_SIZE: usize = SidSizeInfo::MIN.get_layout().size();
+    const MIN_SIZE: usize = SidSizeInfo::MIN.layout().size();
     const REVISION_OFFSET: usize = offset_of!(Sid, revision);
     const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
 
@@ -91,7 +91,7 @@ mod test {
 
         let layout = SidSizeInfo::from_count(count)
             .expect("valid count")
-            .get_layout();
+            .layout();
 
         let mut buf = vec![0u8; layout.size()];
         buf[REVISION_OFFSET] = Sid::REVISION;
