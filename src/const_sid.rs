@@ -136,6 +136,8 @@ where
     /// let sid = const_sid.as_sid();
     /// assert_eq!(sid.rid(), 3);
     /// ```
+    #[inline]
+    #[must_use]
     pub const fn rid(&self) -> u32 {
         #[expect(
             clippy::indexing_slicing,

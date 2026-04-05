@@ -199,6 +199,8 @@ impl Sid {
         clippy::indexing_slicing,
         reason = "N is guaranteed to be greater than 0"
     )]
+    #[must_use]
+    #[inline]
     pub const fn rid(&self) -> u32 {
         self.sub_authorities()[self.sub_authority_count as usize - 1]
     }
