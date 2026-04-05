@@ -73,7 +73,7 @@ impl SecurityIdentifier {
     /// ).unwrap();
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
+    /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
     #[inline]
@@ -106,7 +106,7 @@ impl SecurityIdentifier {
     /// };
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
+    /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
     #[inline]

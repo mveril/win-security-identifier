@@ -155,7 +155,7 @@ impl Sid {
     /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
     /// let const_sid = ConstSid::<1>::new(SidIdentifierAuthority::NT_AUTHORITY, [1]);
     /// let sid = const_sid.as_sid();
-    /// let subs = sid.get_sub_authorities();
+    /// let subs = sid.sub_authorities();
     /// assert_eq!(subs, &[1]);
     /// ```
     #[must_use]
@@ -220,7 +220,7 @@ impl Sid {
     /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");
     /// assert_eq!(sid.revision, Sid::REVISION);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [20u32]);
+    /// assert_eq!(sid.sub_authorities(), [20u32]);
     #[inline]
     pub const unsafe fn from_bytes(value: &[u8]) -> Result<&Self, InvalidSidFormat> {
         if let Err(err) = validate_sid_bytes_unaligned(value) {
