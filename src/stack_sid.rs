@@ -42,7 +42,7 @@ impl StackSid {
     ///     .expect("valid SID parts");
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
+    /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
     #[inline]
@@ -75,7 +75,7 @@ impl StackSid {
     ///     )};
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
+    /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
     #[inline]
@@ -180,7 +180,7 @@ impl StackSid {
     /// let sid = StackSid::from_bytes(&bytes).expect("valid SID parts");
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [20u32]);
+    /// assert_eq!(sid.sub_authorities(), [20u32]);
     /// ```
     #[inline]
     pub const fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
