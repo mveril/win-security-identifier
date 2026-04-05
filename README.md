@@ -48,12 +48,11 @@ cargo build --features serde
 
 ```rust
 use win_security_identifier::{
-    security_identifier::SecurityIdentifier,
-    sid_identifier_authority::SidIdentifierAuthority,
+    SecurityIdentifier,
+    SidIdentifierAuthority,
 };
 
 let sid = SecurityIdentifier::try_new(
-    1,
     SidIdentifierAuthority::NT_AUTHORITY,
     &[32u32, 544u32],
 ).unwrap();
