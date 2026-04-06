@@ -15,8 +15,6 @@ use core::{
     hash::{self, Hash},
     ptr,
 };
-#[cfg(feature = "std")]
-use std::borrow::ToOwned;
 
 /// Fixed-size, compile-time Security Identifier (SID).
 ///
@@ -39,10 +37,10 @@ use std::borrow::ToOwned;
 /// let owned: SecurityIdentifier = ADMIN_ALIAS.into();
 /// assert_eq!(owned.to_string(), ADMIN_ALIAS.to_string());
 /// assert_eq!(owned, ADMIN_ALIAS);
-/// assert_eq!(ConstSid::<2>::try_from(owned.as_ref()).unwrap(), ADMIN_ALIAS);
+/// assert_eq!(ConstSid::<2>::try_from(owned.as_sid()).unwrap(), ADMIN_ALIAS);
 /// assert!(ConstSid::<3>::try_from(owned).is_err());
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct ConstSid<const N: usize>
 where
@@ -95,6 +93,16 @@ where
     #[inline]
     fn as_ref(&self) -> &Sid {
         self.as_sid()
+    }
+}
+
+impl<const N: usize> AsRef<[u8]> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
     }
 }
 
@@ -232,6 +240,19 @@ where
     }
 }
 
+impl<const N: usize, const M: usize> PartialEq<ConstSid<M>> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+    [u32; M]: SidLenValid,
+{
+    #[inline]
+    fn eq(&self, other: &ConstSid<M>) -> bool {
+        self.as_sid() == other.as_sid()
+    }
+}
+
+impl<const N: usize> Eq for ConstSid<N> where [u32; N]: SidLenValid {}
+
 impl<const N: usize> PartialEq<Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
@@ -242,16 +263,6 @@ where
     }
 }
 
-impl<const N: usize> PartialEq<ConstSid<N>> for Sid
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_sid())
-    }
-}
-
 #[cfg(feature = "alloc")]
 impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N>
 where
@@ -259,27 +270,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self.eq(other.as_ref())
-    }
-}
-#[cfg(feature = "alloc")]
-impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_sid())
-    }
-}
-
-impl<const N: usize> PartialEq<ConstSid<N>> for StackSid
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.as_sid().eq(other)
+        self == other.as_sid()
     }
 }
 
@@ -290,18 +281,6 @@ where
     #[inline]
     fn eq(&self, other: &StackSid) -> bool {
         self.as_sid().eq(other)
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn from(value: ConstSid<N>) -> Self {
-        let sid: &Sid = value.as_ref();
-        sid.to_owned()
     }
 }
 
@@ -336,6 +315,29 @@ where
     type Error = TryFromSliceError;
     #[inline]
     fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_sid())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<const N: usize> TryFrom<&SecurityIdentifier> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    type Error = TryFromSliceError;
+    #[inline]
+    fn try_from(value: &SecurityIdentifier) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_sid())
+    }
+}
+
+impl<const N: usize> TryFrom<&StackSid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    type Error = TryFromSliceError;
+    #[inline]
+    fn try_from(value: &StackSid) -> Result<Self, Self::Error> {
         Self::try_from(value.as_sid())
     }
 }
@@ -381,7 +383,7 @@ mod test {
         let mut hasher1 = DefaultHasher::default();
         let mut hasher2 = DefaultHasher::default();
         sid.hash(&mut hasher1);
-        sid.as_ref().hash(&mut hasher2);
+        sid.as_sid().hash(&mut hasher2);
         assert_eq!(hasher1.finish(), hasher2.finish());
     }
 
@@ -421,7 +423,7 @@ mod test {
     fn test_try_from_sid_and_security_identifier() {
         let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42]);
         let owned: SecurityIdentifier = sid.into();
-        let sid2 = ConstSid::<2>::try_from(owned.as_ref()).unwrap();
+        let sid2 = ConstSid::<2>::try_from(owned.as_sid()).unwrap();
         assert_eq!(sid, sid2);
     }
 
@@ -430,7 +432,7 @@ mod test {
     fn test_invalid_try_from() {
         let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42, 99]);
         let owned: SecurityIdentifier = sid.into();
-        assert!(ConstSid::<2>::try_from(owned.as_ref()).is_err());
+        assert!(ConstSid::<2>::try_from(owned.as_sid()).is_err());
     }
 
     #[test]
