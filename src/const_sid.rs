@@ -15,8 +15,6 @@ use core::{
     hash::{self, Hash},
     ptr,
 };
-#[cfg(feature = "std")]
-use std::borrow::ToOwned;
 
 /// Fixed-size, compile-time Security Identifier (SID).
 ///
@@ -272,7 +270,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self.eq(other.as_ref())
+        self == other.as_sid()
     }
 }
 

@@ -292,12 +292,14 @@ impl From<&Sid> for StackSid {
 }
 
 impl From<SecurityIdentifier> for StackSid {
+    #[inline]
     fn from(value: SecurityIdentifier) -> Self {
         value.as_sid().into()
     }
 }
 
 impl From<&SecurityIdentifier> for StackSid {
+    #[inline]
     fn from(value: &SecurityIdentifier) -> Self {
         value.as_sid().into()
     }

@@ -18,6 +18,7 @@ use crate::ConstSid;
 use crate::InvalidSidFormat;
 #[cfg(feature = "alloc")]
 use crate::SecurityIdentifier;
+use crate::StackSid;
 use crate::internal::SidLenValid;
 use crate::utils;
 use crate::utils::validate_sid_bytes_unaligned;
@@ -288,7 +289,7 @@ impl Eq for Sid {}
 impl PartialEq<SecurityIdentifier> for Sid {
     #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self == other.as_ref()
+        self == other.as_sid()
     }
 }
 
@@ -298,14 +299,14 @@ where
 {
     #[inline]
     fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_sid())
+        self == other.as_sid()
     }
 }
 
 impl PartialEq<StackSid> for Sid {
     #[inline]
     fn eq(&self, other: &StackSid) -> bool {
-        self.eq(other.as_sid())
+        self == other.as_sid()
     }
 }
 

@@ -413,7 +413,7 @@ impl PartialEq<StackSid> for SecurityIdentifier {
 impl PartialEq for SecurityIdentifier {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        AsRef::<Sid>::as_ref(self) == other.as_ref()
+        self.as_sid() == other.as_sid()
     }
 }
 
@@ -425,12 +425,14 @@ impl From<Box<Sid>> for SecurityIdentifier {
 }
 
 impl From<StackSid> for SecurityIdentifier {
+    #[inline]
     fn from(value: StackSid) -> Self {
         value.as_sid().into()
     }
 }
 
 impl From<&StackSid> for SecurityIdentifier {
+    #[inline]
     fn from(value: &StackSid) -> Self {
         value.as_sid().into()
     }
