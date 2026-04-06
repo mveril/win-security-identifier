@@ -13,8 +13,8 @@ use crate::utils::{self, sub_authority_size_guard, validate_sid_bytes_unaligned}
 use crate::{ConstSid, Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
 use core::mem::{MaybeUninit, size_of, size_of_val};
+use core::ptr;
 use core::str::FromStr;
-use core::{from, ptr};
 use delegate::delegate;
 use parsing::{self, InvalidSidFormat};
 

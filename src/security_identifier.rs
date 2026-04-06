@@ -12,7 +12,6 @@ use crate::utils::validate_sid_bytes_unaligned;
 use ::alloc::{borrow::ToOwned, boxed::Box};
 use core::alloc::Layout;
 use core::fmt::{self, Debug, Display};
-use core::from;
 use core::mem::offset_of;
 use core::ops::Deref;
 mod maybe_uninit;
