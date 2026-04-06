@@ -291,6 +291,7 @@ impl From<&Sid> for StackSid {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<SecurityIdentifier> for StackSid {
     #[inline]
     fn from(value: SecurityIdentifier) -> Self {
@@ -298,6 +299,7 @@ impl From<SecurityIdentifier> for StackSid {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&SecurityIdentifier> for StackSid {
     #[inline]
     fn from(value: &SecurityIdentifier) -> Self {
