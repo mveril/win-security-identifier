@@ -383,7 +383,7 @@ mod test {
         let mut hasher1 = DefaultHasher::default();
         let mut hasher2 = DefaultHasher::default();
         sid.hash(&mut hasher1);
-        sid.as_ref().hash(&mut hasher2);
+        sid.as_sid().hash(&mut hasher2);
         assert_eq!(hasher1.finish(), hasher2.finish());
     }
 

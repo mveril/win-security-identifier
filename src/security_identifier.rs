@@ -444,8 +444,7 @@ where
 {
     #[inline]
     fn from(value: ConstSid<N>) -> Self {
-        let sid: &Sid = value.as_ref();
-        sid.to_owned()
+        value.as_sid().to_owned()
     }
 }
 
