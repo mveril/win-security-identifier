@@ -1,3 +1,6 @@
+#[cfg(feature = "alloc")]
+use crate::SecurityIdentifier;
+use crate::internal::SidLenValid;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
 use core::borrow::{Borrow, BorrowMut};
@@ -7,7 +10,7 @@ use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
 use crate::utils::{self, sub_authority_size_guard, validate_sid_bytes_unaligned};
-use crate::{Sid, SidIdentifierAuthority};
+use crate::{ConstSid, Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
 use core::mem::{MaybeUninit, size_of, size_of_val};
 use core::ptr;
@@ -288,6 +291,32 @@ impl From<&Sid> for StackSid {
     }
 }
 
+#[cfg(feature = "alloc")]
+impl From<SecurityIdentifier> for StackSid {
+    #[inline]
+    fn from(value: SecurityIdentifier) -> Self {
+        value.as_sid().into()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl From<&SecurityIdentifier> for StackSid {
+    #[inline]
+    fn from(value: &SecurityIdentifier) -> Self {
+        value.as_sid().into()
+    }
+}
+
+impl<const N: usize> From<ConstSid<N>> for StackSid
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn from(value: ConstSid<N>) -> Self {
+        value.as_sid().into()
+    }
+}
+
 impl FromStr for StackSid {
     type Err = parsing::InvalidSidFormat;
 
@@ -342,10 +371,21 @@ impl PartialEq<Sid> for StackSid {
     }
 }
 
-impl PartialEq<StackSid> for Sid {
+impl<const N: usize> PartialEq<ConstSid<N>> for StackSid
+where
+    [u32; N]: SidLenValid,
+{
     #[inline]
-    fn eq(&self, other: &StackSid) -> bool {
-        self.eq(other.as_sid())
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self.as_sid() == other.as_sid()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl PartialEq<SecurityIdentifier> for StackSid {
+    #[inline]
+    fn eq(&self, other: &SecurityIdentifier) -> bool {
+        self.as_sid() == other.as_sid()
     }
 }
 

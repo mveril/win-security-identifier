@@ -14,7 +14,12 @@ mod windows;
 #[cfg(all(windows, feature = "std"))]
 pub use windows::sid_lookup;
 
+use crate::ConstSid;
 use crate::InvalidSidFormat;
+#[cfg(feature = "alloc")]
+use crate::SecurityIdentifier;
+use crate::StackSid;
+use crate::internal::SidLenValid;
 use crate::utils;
 use crate::utils::validate_sid_bytes_unaligned;
 
@@ -233,6 +238,13 @@ impl Sid {
     }
 }
 
+impl AsRef<[u8]> for Sid {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 impl Debug for Sid {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -272,6 +284,32 @@ impl PartialEq for Sid {
 }
 
 impl Eq for Sid {}
+
+#[cfg(feature = "alloc")]
+impl PartialEq<SecurityIdentifier> for Sid {
+    #[inline]
+    fn eq(&self, other: &SecurityIdentifier) -> bool {
+        self == other.as_sid()
+    }
+}
+
+impl<const N: usize> PartialEq<ConstSid<N>> for Sid
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self == other.as_sid()
+    }
+}
+
+impl PartialEq<StackSid> for Sid {
+    #[inline]
+    fn eq(&self, other: &StackSid) -> bool {
+        self == other.as_sid()
+    }
+}
+
 impl Hash for Sid {
     #[inline]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
