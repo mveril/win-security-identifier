@@ -1,8 +1,10 @@
+use crate::ConstSid;
 pub use crate::InvalidSidFormat;
 use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
 use crate::StackSid;
+use crate::internal::SidLenValid;
 use crate::utils;
 use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
@@ -10,6 +12,7 @@ use crate::utils::validate_sid_bytes_unaligned;
 use ::alloc::{borrow::ToOwned, boxed::Box};
 use core::alloc::Layout;
 use core::fmt::{self, Debug, Display};
+use core::from;
 use core::mem::offset_of;
 use core::ops::Deref;
 mod maybe_uninit;
@@ -341,6 +344,13 @@ impl AsRef<Sid> for SecurityIdentifier {
     }
 }
 
+impl AsRef<[u8]> for SecurityIdentifier {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 impl AsMut<Sid> for SecurityIdentifier {
     delegate! {
         to self.inner {
@@ -384,23 +394,19 @@ impl PartialEq<Sid> for SecurityIdentifier {
     }
 }
 
-impl PartialEq<SecurityIdentifier> for Sid {
+impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
+where
+    [u32; N]: SidLenValid,
+{
     #[inline]
-    fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self == other.as_ref()
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self.eq(other.as_sid())
     }
 }
 
 impl PartialEq<StackSid> for SecurityIdentifier {
     #[inline]
     fn eq(&self, other: &StackSid) -> bool {
-        self == other.as_sid()
-    }
-}
-
-impl PartialEq<SecurityIdentifier> for StackSid {
-    #[inline]
-    fn eq(&self, other: &SecurityIdentifier) -> bool {
         self == other.as_sid()
     }
 }
@@ -416,6 +422,29 @@ impl From<Box<Sid>> for SecurityIdentifier {
     #[inline]
     fn from(value: Box<Sid>) -> Self {
         Self { inner: value }
+    }
+}
+
+impl From<StackSid> for SecurityIdentifier {
+    fn from(value: StackSid) -> Self {
+        value.as_sid().into()
+    }
+}
+
+impl From<&StackSid> for SecurityIdentifier {
+    fn from(value: &StackSid) -> Self {
+        value.as_sid().into()
+    }
+}
+
+impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn from(value: ConstSid<N>) -> Self {
+        let sid: &Sid = value.as_ref();
+        sid.to_owned()
     }
 }
 

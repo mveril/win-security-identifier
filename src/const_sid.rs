@@ -98,6 +98,16 @@ where
     }
 }
 
+impl<const N: usize> AsRef<[u8]> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 impl<const N: usize> ConstSid<N>
 where
     [u32; N]: SidLenValid,
@@ -242,16 +252,6 @@ where
     }
 }
 
-impl<const N: usize> PartialEq<ConstSid<N>> for Sid
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_sid())
-    }
-}
-
 #[cfg(feature = "alloc")]
 impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N>
 where
@@ -262,26 +262,6 @@ where
         self.eq(other.as_ref())
     }
 }
-#[cfg(feature = "alloc")]
-impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_sid())
-    }
-}
-
-impl<const N: usize> PartialEq<ConstSid<N>> for StackSid
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.as_sid().eq(other)
-    }
-}
 
 impl<const N: usize> PartialEq<StackSid> for ConstSid<N>
 where
@@ -290,18 +270,6 @@ where
     #[inline]
     fn eq(&self, other: &StackSid) -> bool {
         self.as_sid().eq(other)
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn from(value: ConstSid<N>) -> Self {
-        let sid: &Sid = value.as_ref();
-        sid.to_owned()
     }
 }
 
@@ -336,6 +304,40 @@ where
     type Error = TryFromSliceError;
     #[inline]
     fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_sid())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<const N: usize> TryFrom<&SecurityIdentifier> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    type Error = TryFromSliceError;
+    #[inline]
+    fn try_from(value: &SecurityIdentifier) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_sid())
+    }
+}
+
+impl<const N: usize> TryFrom<StackSid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    type Error = TryFromSliceError;
+    #[inline]
+    fn try_from(value: StackSid) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_sid())
+    }
+}
+
+impl<const N: usize> TryFrom<&StackSid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    type Error = TryFromSliceError;
+    #[inline]
+    fn try_from(value: &StackSid) -> Result<Self, Self::Error> {
         Self::try_from(value.as_sid())
     }
 }
