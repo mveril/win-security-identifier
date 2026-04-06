@@ -37,7 +37,7 @@ use core::{
 /// let owned: SecurityIdentifier = ADMIN_ALIAS.into();
 /// assert_eq!(owned.to_string(), ADMIN_ALIAS.to_string());
 /// assert_eq!(owned, ADMIN_ALIAS);
-/// assert_eq!(ConstSid::<2>::try_from(owned.as_ref()).unwrap(), ADMIN_ALIAS);
+/// assert_eq!(ConstSid::<2>::try_from(owned.as_sid()).unwrap(), ADMIN_ALIAS);
 /// assert!(ConstSid::<3>::try_from(owned).is_err());
 /// ```
 #[derive(Clone, Copy)]
@@ -423,7 +423,7 @@ mod test {
     fn test_try_from_sid_and_security_identifier() {
         let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42]);
         let owned: SecurityIdentifier = sid.into();
-        let sid2 = ConstSid::<2>::try_from(owned.as_ref()).unwrap();
+        let sid2 = ConstSid::<2>::try_from(owned.as_sid()).unwrap();
         assert_eq!(sid, sid2);
     }
 
@@ -432,7 +432,7 @@ mod test {
     fn test_invalid_try_from() {
         let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42, 99]);
         let owned: SecurityIdentifier = sid.into();
-        assert!(ConstSid::<2>::try_from(owned.as_ref()).is_err());
+        assert!(ConstSid::<2>::try_from(owned.as_sid()).is_err());
     }
 
     #[test]
