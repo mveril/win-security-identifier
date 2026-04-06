@@ -367,11 +367,21 @@ impl PartialEq<Sid> for StackSid {
     }
 }
 
+impl<const N: usize> PartialEq<ConstSid<N>> for StackSid
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self.as_sid() == other.as_sid()
+    }
+}
+
 #[cfg(feature = "alloc")]
 impl PartialEq<SecurityIdentifier> for StackSid {
     #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self == other.as_sid()
+        self.as_sid() == other.as_sid()
     }
 }
 

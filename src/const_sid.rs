@@ -42,7 +42,7 @@ use std::borrow::ToOwned;
 /// assert_eq!(ConstSid::<2>::try_from(owned.as_ref()).unwrap(), ADMIN_ALIAS);
 /// assert!(ConstSid::<3>::try_from(owned).is_err());
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct ConstSid<const N: usize>
 where
@@ -242,6 +242,19 @@ where
     }
 }
 
+impl<const N: usize, const M: usize> PartialEq<ConstSid<M>> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+    [u32; M]: SidLenValid,
+{
+    #[inline]
+    fn eq(&self, other: &ConstSid<M>) -> bool {
+        self.as_sid() == other.as_sid()
+    }
+}
+
+impl<const N: usize> Eq for ConstSid<N> where [u32; N]: SidLenValid {}
+
 impl<const N: usize> PartialEq<Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
@@ -316,17 +329,6 @@ where
     type Error = TryFromSliceError;
     #[inline]
     fn try_from(value: &SecurityIdentifier) -> Result<Self, Self::Error> {
-        Self::try_from(value.as_sid())
-    }
-}
-
-impl<const N: usize> TryFrom<StackSid> for ConstSid<N>
-where
-    [u32; N]: SidLenValid,
-{
-    type Error = TryFromSliceError;
-    #[inline]
-    fn try_from(value: StackSid) -> Result<Self, Self::Error> {
         Self::try_from(value.as_sid())
     }
 }
