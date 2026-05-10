@@ -31,7 +31,7 @@ pub enum InvalidSidFormat {
     #[error("SID revision is invalid")]
     InvalidRevision,
     #[error("SID revision {revision} is invalid, expected {expected}")]
-    UnsupportedRevision { revision: u64, expected: u8 },
+    UnsupportedRevision { revision: u8, expected: u8 },
     #[error("SID identifier authority is missing")]
     MissingIdentifierAuthority,
     #[error("SID identifier authority is invalid")]
@@ -62,10 +62,10 @@ impl FromStr for SidComponents {
         let revision = s_cmp
             .next()
             .ok_or(InvalidSidFormat::MissingRevision)?
-            .parse::<u64>()
+            .parse::<u8>()
             .map_err(|_| InvalidSidFormat::InvalidRevision)?;
 
-        if revision != u64::from(SID_REVISION) {
+        if revision != SID_REVISION {
             return Err(InvalidSidFormat::UnsupportedRevision {
                 revision,
                 expected: SID_REVISION,
