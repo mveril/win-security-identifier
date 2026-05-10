@@ -1,10 +1,8 @@
 use core::mem::offset_of;
 use core::{borrow::Borrow, fmt};
 
-use parsing::InvalidSidFormat;
-
 use crate::{
-    Sid, SidSizeInfo,
+    InvalidSidBinaryFormat, Sid, SidSizeInfo,
     sid::{MAX_SUBAUTHORITY_COUNT, MIN_SUBAUTHORITY_COUNT},
 };
 
@@ -13,20 +11,27 @@ pub const fn sub_authority_size_guard(size: usize) -> bool {
 }
 
 /// Validates a raw SID blob like `IsValidSid` would, without assuming alignment.
-pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFormat> {
+pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidBinaryFormat> {
     const REVISION_OFFSET: usize = offset_of!(Sid, revision);
     const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
     const MIN_SIZE: usize = SidSizeInfo::MIN.layout().size();
     if buf.len() < MIN_SIZE {
-        return Err(InvalidSidFormat);
+        return Err(InvalidSidBinaryFormat::TooShort {
+            len: buf.len(),
+            min_len: MIN_SIZE,
+        });
     }
 
     #[expect(
         clippy::indexing_slicing,
         reason = "We know the revision_offset is in the bound (was checked by minimum size)"
     )]
-    if buf[REVISION_OFFSET] != Sid::REVISION {
-        return Err(InvalidSidFormat);
+    let revision = buf[REVISION_OFFSET];
+    if revision != Sid::REVISION {
+        return Err(InvalidSidBinaryFormat::InvalidRevision {
+            revision,
+            expected: Sid::REVISION,
+        });
     }
     #[expect(
         clippy::indexing_slicing,
@@ -35,7 +40,11 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
     let count = buf[COUNT_OFFSET];
 
     if !sub_authority_size_guard(count as usize) {
-        return Err(InvalidSidFormat);
+        return Err(InvalidSidBinaryFormat::InvalidSubAuthorityCount {
+            count,
+            min: MIN_SUBAUTHORITY_COUNT,
+            max: MAX_SUBAUTHORITY_COUNT,
+        });
     }
 
     // SAFETY: size already validated
@@ -44,7 +53,11 @@ pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidFo
         .size();
 
     if buf.len() != size {
-        return Err(InvalidSidFormat);
+        return Err(InvalidSidBinaryFormat::InvalidLength {
+            len: buf.len(),
+            expected_len: size,
+            count,
+        });
     }
 
     Ok(())
@@ -117,7 +130,13 @@ mod test {
                 *first = 1;
             }
 
-            assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+            assert_eq!(
+                validate_sid_bytes_unaligned(&buf),
+                Err(InvalidSidBinaryFormat::TooShort {
+                    len,
+                    min_len: MIN_SIZE
+                })
+            );
         }
     }
 
@@ -127,17 +146,31 @@ mod test {
         let count_offset = offset_of!(Sid, sub_authority_count);
         buf[count_offset] = 0;
 
-        assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+        assert_eq!(
+            validate_sid_bytes_unaligned(&buf),
+            Err(InvalidSidBinaryFormat::InvalidSubAuthorityCount {
+                count: 0,
+                min: MIN_SUBAUTHORITY_COUNT,
+                max: MAX_SUBAUTHORITY_COUNT,
+            })
+        );
     }
 
     #[test]
     fn rejects_excessive_sub_authority() {
-        let mut buf = ArrayVec::from([0u8; MIN_SIZE]);
+        let mut buf = make_sid_bytes(1);
 
         let count_offset = offset_of!(Sid, sub_authority_count);
         buf[count_offset] = MAX_SUBAUTHORITY_COUNT + 1;
 
-        assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+        assert_eq!(
+            validate_sid_bytes_unaligned(&buf),
+            Err(InvalidSidBinaryFormat::InvalidSubAuthorityCount {
+                count: MAX_SUBAUTHORITY_COUNT + 1,
+                min: MIN_SUBAUTHORITY_COUNT,
+                max: MAX_SUBAUTHORITY_COUNT,
+            })
+        );
     }
 
     #[test]
@@ -146,7 +179,17 @@ mod test {
         let count_offset = offset_of!(Sid, sub_authority_count);
         buf[count_offset] = 2;
 
-        assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+        assert_eq!(
+            validate_sid_bytes_unaligned(&buf),
+            Err(InvalidSidBinaryFormat::InvalidLength {
+                len: SidSizeInfo::MIN.layout().size(),
+                expected_len: SidSizeInfo::from_count(2)
+                    .expect("valid count")
+                    .layout()
+                    .size(),
+                count: 2,
+            })
+        );
     }
 
     #[test]
@@ -188,7 +231,10 @@ mod test {
         fn proptest_short_buffers_are_rejected(len in 0usize..MIN_SIZE) {
             let mut buf = ArrayVec::<u8, MIN_SIZE>::new();
             buf.extend(repeat_n(0, len));
-            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+            prop_assert_eq!(
+                validate_sid_bytes_unaligned(&buf),
+                Err(InvalidSidBinaryFormat::TooShort { len, min_len: MIN_SIZE })
+            );
         }
 
         #[test]
@@ -204,13 +250,32 @@ mod test {
                 buf.extend(repeat_n(0, extra));
             }
 
-            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+            let expected = if buf.len() < MIN_SIZE {
+                InvalidSidBinaryFormat::TooShort {
+                    len: buf.len(),
+                    min_len: MIN_SIZE,
+                }
+            } else {
+                InvalidSidBinaryFormat::InvalidLength {
+                    len: buf.len(),
+                    expected_len: SidSizeInfo::from_count(count).expect("valid count").layout().size(),
+                    count,
+                }
+            };
+
+            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(expected));
         }
         #[test]
         fn proptest_wrong_revision_is_rejected(revision in prop_oneof![Just(0u8), 2u8..], count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT){
             let mut buf =make_sid_bytes(count);
             buf[REVISION_OFFSET] = revision;
-            prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
+            prop_assert_eq!(
+                validate_sid_bytes_unaligned(&buf),
+                Err(InvalidSidBinaryFormat::InvalidRevision {
+                    revision,
+                    expected: Sid::REVISION,
+                })
+            );
         }
     }
 }

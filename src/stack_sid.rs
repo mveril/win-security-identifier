@@ -10,13 +10,13 @@ use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
 use crate::utils::{self, sub_authority_size_guard, validate_sid_bytes_unaligned};
-use crate::{ConstSid, Sid, SidIdentifierAuthority};
+use crate::{ConstSid, InvalidSidBinaryFormat, Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
 use core::mem::{MaybeUninit, size_of, size_of_val};
 use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
-use parsing::{self, InvalidSidFormat};
+use parsing;
 
 #[repr(C)]
 pub struct StackSid {
@@ -167,7 +167,7 @@ impl StackSid {
     /// (revision, identifier authority, sub-authorities).
     ///
     /// # Errors
-    /// Returns `InvalidSidFormat` if the byte slice is not a valid SID
+    /// Returns `InvalidSidBinaryFormat` if the byte slice is not a valid SID
     /// (e.g., invalid length, revision, or sub-authority count).
     ///
     /// # Examples
@@ -186,7 +186,7 @@ impl StackSid {
     /// assert_eq!(sid.sub_authorities(), [20u32]);
     /// ```
     #[inline]
-    pub const fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
+    pub const fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidBinaryFormat> {
         if let Err(err) = validate_sid_bytes_unaligned(bytes) {
             return Err(err);
         }
@@ -263,7 +263,7 @@ impl AsRef<[u8]> for StackSid {
 }
 
 impl<'a> TryFrom<&'a [u8]> for StackSid {
-    type Error = InvalidSidFormat;
+    type Error = InvalidSidBinaryFormat;
 
     #[inline]
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
