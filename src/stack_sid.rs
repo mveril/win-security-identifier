@@ -16,7 +16,6 @@ use core::mem::{MaybeUninit, size_of, size_of_val};
 use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
-use parsing;
 
 #[repr(C)]
 pub struct StackSid {
