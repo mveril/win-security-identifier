@@ -277,5 +277,43 @@ mod test {
                 })
             );
         }
+
+        #[test]
+        fn proptest_public_from_bytes_return_binary_errors(revision in prop_oneof![Just(0u8), 2u8..], count in MIN_SUBAUTHORITY_COUNT..=MAX_SUBAUTHORITY_COUNT) {
+            let sub_authorities = [0u32; MAX_SUBAUTHORITY_COUNT as usize];
+            let mut stack_sid = crate::StackSid::try_new(
+                crate::SidIdentifierAuthority::NT_AUTHORITY,
+                &sub_authorities[..count as usize],
+            )
+            .expect("valid sub-authority count");
+            let buf = unsafe {
+                // SAFETY: The bytes come from `StackSid`, so the buffer is aligned for `Sid`.
+                // The test mutates only the revision byte while preserving allocation and length.
+                let bytes = stack_sid.as_bytes_mut();
+                bytes[REVISION_OFFSET] = revision;
+                bytes
+            };
+            let expected = InvalidSidBinaryFormat::InvalidRevision {
+                revision,
+                expected: Sid::REVISION,
+            };
+
+            prop_assert_eq!(
+                crate::StackSid::from_bytes(buf),
+                Err(expected)
+            );
+
+            #[cfg(feature = "alloc")]
+            prop_assert_eq!(
+                crate::SecurityIdentifier::from_bytes(buf).err(),
+                Some(expected)
+            );
+
+            let sid = unsafe {
+                // SAFETY: `buf` points into `stack_sid`, whose storage is aligned for `Sid`.
+                Sid::from_bytes(buf)
+            };
+            prop_assert_eq!(sid.err(), Some(expected));
+        }
     }
 }

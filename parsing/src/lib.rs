@@ -140,6 +140,7 @@ fn parse_sub_authority(index: usize, s: &str) -> Result<u32, InvalidSidFormat> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn parses_hex_identifier_authority() {
@@ -154,6 +155,120 @@ mod tests {
             result.as_ref().map(|sid| sid.sub_authorities.as_slice()),
             Ok([1].as_slice())
         );
+    }
+
+    proptest! {
+        #[test]
+        fn rejects_invalid_prefix(prefix in "[^sS-]{0,8}") {
+            let sid = format!("{prefix}-1-5-32");
+
+            prop_assert_eq!(
+                sid.parse::<SidComponents>().err(),
+                Some(InvalidSidFormat::InvalidPrefix)
+            );
+        }
+
+        #[test]
+        fn rejects_unsupported_revision(revision in prop_oneof![Just(0u8), 2u8..=u8::MAX]) {
+            let sid = format!("S-{revision}-5-32");
+
+            prop_assert_eq!(
+                sid.parse::<SidComponents>().err(),
+                Some(InvalidSidFormat::UnsupportedRevision {
+                    revision,
+                    expected: SID_REVISION,
+                })
+            );
+        }
+
+        #[test]
+        fn accepts_decimal_identifier_authorities(value in 0u64..=MAX_IDENTIFIER_AUTHORITY) {
+            let sid = format!("S-1-{value}-32");
+            let bytes = value.to_be_bytes();
+
+            let parsed = sid.parse::<SidComponents>();
+
+            prop_assert_eq!(
+                parsed.as_ref().map(|sid| sid.identifier_authority),
+                Ok([bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
+            );
+        }
+
+        #[test]
+        fn accepts_hex_identifier_authorities(value in 0u64..=MAX_IDENTIFIER_AUTHORITY) {
+            let sid = format!("S-1-0x{value:X}-32");
+            let bytes = value.to_be_bytes();
+
+            let parsed = sid.parse::<SidComponents>();
+
+            prop_assert_eq!(
+                parsed.as_ref().map(|sid| sid.identifier_authority),
+                Ok([bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
+            );
+        }
+
+        #[test]
+        fn rejects_identifier_authorities_above_48_bits(value in (MAX_IDENTIFIER_AUTHORITY + 1)..=u64::MAX) {
+            let sid = format!("S-1-{value}-32");
+
+            prop_assert_eq!(
+                sid.parse::<SidComponents>().err(),
+                Some(InvalidSidFormat::IdentifierAuthorityOutOfRange {
+                    value,
+                    max: MAX_IDENTIFIER_AUTHORITY,
+                })
+            );
+        }
+
+        #[test]
+        fn rejects_sub_authorities_above_u32(value in (u64::from(u32::MAX) + 1)..=u64::MAX) {
+            let sid = format!("S-1-5-32-{value}");
+
+            prop_assert_eq!(
+                sid.parse::<SidComponents>().err(),
+                Some(InvalidSidFormat::SubAuthorityOutOfRange {
+                    index: 1,
+                    value,
+                    max: u64::from(u32::MAX),
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn reports_missing_revision() {
+        assert!(matches!(
+            "S".parse::<SidComponents>(),
+            Err(InvalidSidFormat::MissingRevision)
+        ));
+    }
+
+    #[test]
+    fn reports_invalid_revision() {
+        assert!(matches!(
+            "S-not-a-revision-5-32".parse::<SidComponents>(),
+            Err(InvalidSidFormat::InvalidRevision)
+        ));
+    }
+
+    #[test]
+    fn reports_missing_identifier_authority() {
+        assert!(matches!(
+            "S-1".parse::<SidComponents>(),
+            Err(InvalidSidFormat::MissingIdentifierAuthority)
+        ));
+    }
+
+    #[test]
+    fn reports_invalid_identifier_authority() {
+        assert!(matches!(
+            "S-1-not-an-authority-32".parse::<SidComponents>(),
+            Err(InvalidSidFormat::InvalidIdentifierAuthority)
+        ));
+        assert!(matches!(
+            "S-1-0xnothex-32".parse::<SidComponents>(),
+            Err(InvalidSidFormat::InvalidIdentifierAuthority)
+        ));
     }
 
     #[test]
@@ -175,6 +290,14 @@ mod tests {
     }
 
     #[test]
+    fn reports_missing_sub_authority() {
+        assert!(matches!(
+            "S-1-5".parse::<SidComponents>(),
+            Err(InvalidSidFormat::MissingSubAuthority)
+        ));
+    }
+
+    #[test]
     fn reports_invalid_sub_authority() {
         assert!(matches!(
             "S-1-5-not-a-rid".parse::<SidComponents>(),
@@ -190,6 +313,25 @@ mod tests {
                 index: 0,
                 value: 4_294_967_296,
                 max: 4_294_967_295,
+            })
+        ));
+    }
+
+    #[test]
+    fn reports_invalid_sub_authority_index() {
+        assert!(matches!(
+            "S-1-5-32-not-a-rid".parse::<SidComponents>(),
+            Err(InvalidSidFormat::InvalidSubAuthority { index: 1 })
+        ));
+    }
+
+    #[test]
+    fn reports_too_many_sub_authorities() {
+        assert!(matches!(
+            "S-1-5-1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16".parse::<SidComponents>(),
+            Err(InvalidSidFormat::TooManySubAuthorities {
+                count: 16,
+                max: MAX_SUBAUTHORITY_COUNT_USIZE,
             })
         ));
     }
