@@ -330,6 +330,8 @@ mod tests {
     use core::ops::Deref;
 
     use super::*;
+    use arrayvec::ArrayString;
+    use core::fmt::Write;
     use proptest::prelude::*;
 
     #[cfg(feature = "std")]
@@ -490,11 +492,14 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::use_debug, reason = "test verifies Debug output")]
     fn test_debug() {
         let sample_sid = well_known::NULL;
-        assert_eq!(
-            format!("{:?}", sample_sid.as_sid()),
-            format!("{:}(S-1-0-0)", stringify!(Sid)),
+        let mut output = ArrayString::<32>::new();
+        assert!(
+            write!(&mut output, "{:?}", sample_sid.as_sid()).is_ok(),
+            "debug output should fit fixed buffer"
         );
+        assert_eq!(output.as_str(), "Sid(S-1-0-0)",);
     }
 }

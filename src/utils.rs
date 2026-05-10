@@ -77,13 +77,17 @@ pub fn debug_print<T: Borrow<Sid> + ?Sized>(
 #[cfg(test)]
 mod test {
     use super::*;
+    use arrayvec::ArrayVec;
+    use core::iter::repeat_n;
     use proptest::prelude::*;
     const MIN_SIZE: usize = SidSizeInfo::MIN.layout().size();
+    const MAX_SIZE: usize = SidSizeInfo::MAX.layout().size();
+    const TEST_BUF_SIZE: usize = MAX_SIZE + 7;
     const REVISION_OFFSET: usize = offset_of!(Sid, revision);
     const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
 
     /// Builds a raw SID buffer for the given sub-authority count.
-    fn make_sid_bytes(count: u8) -> Vec<u8> {
+    fn make_sid_bytes(count: u8) -> ArrayVec<u8, TEST_BUF_SIZE> {
         assert!(
             sub_authority_size_guard(count as usize),
             "Invalid count for make_sid_bytes()"
@@ -93,7 +97,8 @@ mod test {
             .expect("valid count")
             .layout();
 
-        let mut buf = vec![0u8; layout.size()];
+        let mut buf: ArrayVec<u8, TEST_BUF_SIZE> = ArrayVec::new();
+        buf.extend(repeat_n(0, layout.size()));
         buf[REVISION_OFFSET] = Sid::REVISION;
         buf[COUNT_OFFSET] = count;
         buf
@@ -106,7 +111,8 @@ mod test {
     #[test]
     fn rejects_too_small_buffer() {
         for len in 0..MIN_SIZE {
-            let mut buf = vec![0u8; len];
+            let mut buf = ArrayVec::<u8, MIN_SIZE>::new();
+            buf.extend(repeat_n(0, len));
             if let Some(first) = buf.first_mut() {
                 *first = 1;
             }
@@ -126,7 +132,7 @@ mod test {
 
     #[test]
     fn rejects_excessive_sub_authority() {
-        let mut buf = vec![0u8; MIN_SIZE];
+        let mut buf = ArrayVec::from([0u8; MIN_SIZE]);
 
         let count_offset = offset_of!(Sid, sub_authority_count);
         buf[count_offset] = MAX_SUBAUTHORITY_COUNT + 1;
@@ -180,7 +186,8 @@ mod test {
 
         #[test]
         fn proptest_short_buffers_are_rejected(len in 0usize..MIN_SIZE) {
-            let buf = vec![0u8; len];
+            let mut buf = ArrayVec::<u8, MIN_SIZE>::new();
+            buf.extend(repeat_n(0, len));
             prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));
         }
 
@@ -194,7 +201,7 @@ mod test {
             if extra % 2 == 0 {
                 buf.truncate(buf.len().saturating_sub(extra));
             } else {
-                buf.extend(core::iter::repeat_n(0u8, extra));
+                buf.extend(repeat_n(0, extra));
             }
 
             prop_assert_eq!(validate_sid_bytes_unaligned(&buf), Err(InvalidSidFormat));

@@ -30,15 +30,20 @@ use core::{
 ///
 /// # Examples
 /// ```rust
-/// # use win_security_identifier::{ConstSid, well_known, SidIdentifierAuthority, SecurityIdentifier};
+/// # use win_security_identifier::{ConstSid, well_known};
 /// const ADMIN_ALIAS: ConstSid<2> = well_known::BUILTIN_ADMINISTRATORS;
-/// assert_eq!(ADMIN_ALIAS.to_string(), "S-1-5-32-544");
+/// assert_eq!(ADMIN_ALIAS.as_sid().rid(), 544);
+///
+/// # #[cfg(feature = "alloc")]
+/// # {
+/// # use win_security_identifier::SecurityIdentifier;
 /// // It can be converted from (if const is correct) and to owned.
 /// let owned: SecurityIdentifier = ADMIN_ALIAS.into();
 /// assert_eq!(owned.to_string(), ADMIN_ALIAS.to_string());
 /// assert_eq!(owned, ADMIN_ALIAS);
 /// assert_eq!(ConstSid::<2>::try_from(owned.as_sid()).unwrap(), ADMIN_ALIAS);
 /// assert!(ConstSid::<3>::try_from(owned).is_err());
+/// # }
 /// ```
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -372,6 +377,8 @@ mod test {
     use crate::well_known;
 
     use super::*;
+    use arrayvec::ArrayString;
+    use core::fmt::Write;
     #[cfg(feature = "std")]
     #[test]
     pub fn test_hash() {
@@ -447,11 +454,14 @@ mod test {
     }
 
     #[test]
+    #[expect(clippy::use_debug, reason = "test verifies Debug output")]
     fn test_debug() {
         let sample_sid = well_known::NULL;
-        assert_eq!(
-            format!("{sample_sid:?}"),
-            format!("{:}(S-1-0-0)", stringify!(ConstSid)),
+        let mut output = ArrayString::<32>::new();
+        assert!(
+            write!(&mut output, "{sample_sid:?}").is_ok(),
+            "debug output should fit fixed buffer"
         );
+        assert_eq!(output.as_str(), "ConstSid(S-1-0-0)",);
     }
 }

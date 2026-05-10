@@ -33,6 +33,8 @@
 //! ## Examples
 //! ### Create a SID from parts
 //! ```rust
+//! # #[cfg(feature = "alloc")]
+//! # {
 //! use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
 //!
 //! let sid = SecurityIdentifier::try_new(
@@ -40,6 +42,7 @@
 //!     [32u32, 544u32], // BUILTIN\Administrators => S-1-5-32-544
 //! ).expect("valid SID");
 //! assert_eq!(sid.to_string(), "S-1-5-32-544");
+//! # }
 //! ```
 //!
 //! ### Use a const SID
@@ -51,14 +54,19 @@
 //!     [32, 544],
 //! );
 //!
-//! // Convert to owned SID for operations that need ownership
+//! assert_eq!(ADMIN.as_sid().rid(), 544);
+//!
+//! # #[cfg(feature = "alloc")]
+//! # {
+//! // Convert to owned SID for operations that need ownership.
 //! let owned = win_security_identifier::SecurityIdentifier::from(ADMIN);
 //! assert_eq!(owned.to_string(), "S-1-5-32-544");
+//! # }
 //! ```
 //!
 //! ### (Windows) Get current user SID
 //! ```no_run
-//! # #[cfg(windows)]
+//! # #[cfg(all(windows, feature = "std", feature = "alloc"))]
 //! # {
 //! # use win_security_identifier::{SecurityIdentifier};
 //! use win_security_identifier::GetCurrentSid;
@@ -69,7 +77,7 @@
 //!
 //! ### (Windows) Resolve DOMAIN\\Name from a SID
 //! ```no_run
-//! # #[cfg(windows)]
+//! # #[cfg(all(windows, feature = "std", feature = "alloc"))]
 //! # {
 //! use win_security_identifier::{SecurityIdentifier};
 //! use win_security_identifier::sid_lookup::SidType;
