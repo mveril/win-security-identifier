@@ -143,10 +143,17 @@ mod tests {
 
     #[test]
     fn parses_hex_identifier_authority() {
-        let sid: SidComponents = "S-1-0x100000000-1".parse().unwrap();
+        let result = "S-1-0x100000000-1".parse::<SidComponents>();
 
-        assert_eq!(sid.identifier_authority, [0, 1, 0, 0, 0, 0]);
-        assert_eq!(sid.sub_authorities.as_slice(), [1]);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.as_ref().map(|sid| sid.identifier_authority),
+            Ok([0, 1, 0, 0, 0, 0])
+        );
+        assert_eq!(
+            result.as_ref().map(|sid| sid.sub_authorities.as_slice()),
+            Ok([1].as_slice())
+        );
     }
 
     #[test]
