@@ -500,9 +500,6 @@ mod tests {
             write!(&mut output, "{:?}", sample_sid.as_sid()).is_ok(),
             "debug output should fit fixed buffer"
         );
-        assert_eq!(
-            output.as_str(),
-            "Sid(S-1-0-0)",
-        );
+        assert_eq!(output.as_str(), "Sid(S-1-0-0)",);
     }
 }

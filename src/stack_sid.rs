@@ -393,11 +393,11 @@ impl PartialEq<SecurityIdentifier> for StackSid {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use arrayvec::ArrayString;
     use crate::arb_identifier_authority;
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfills_ptr::metadata;
     use crate::well_known;
+    use arrayvec::ArrayString;
     use core::fmt::Write;
     #[cfg(has_ptr_metadata)]
     use core::ptr::metadata;
@@ -451,9 +451,6 @@ mod tests {
             write!(&mut output, "{stack_sid:?}").is_ok(),
             "debug output should fit fixed buffer"
         );
-        assert_eq!(
-            output.as_str(),
-            "StackSid(S-1-0-0)",
-        );
+        assert_eq!(output.as_str(), "StackSid(S-1-0-0)",);
     }
 }
