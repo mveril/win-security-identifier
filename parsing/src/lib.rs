@@ -237,102 +237,104 @@ mod tests {
 
     #[test]
     fn reports_missing_revision() {
-        assert_matches!(
-            "S".parse::<SidComponents>(),
-            Err(InvalidSidFormat::MissingRevision)
-        ));
+        assert_eq!(
+            "S".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::MissingRevision)
+        );
     }
 
     #[test]
     fn reports_invalid_revision() {
         assert_eq!(
-            "S-not-a-revision-5-32".parse::<SidComponents>(),
-            Err(InvalidSidFormat::InvalidRevision)
+            "S-not-a-revision-5-32".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::InvalidRevision)
         );
     }
 
     #[test]
     fn reports_missing_identifier_authority() {
-        assert_matches!(
-            "S-1".parse::<SidComponents>(),
-            Err(InvalidSidFormat::MissingIdentifierAuthority)
+        assert_eq!(
+            "S-1".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::MissingIdentifierAuthority)
         );
     }
 
     #[test]
     fn reports_invalid_identifier_authority() {
-        assert_matches!(
-            "S-1-not-an-authority-32".parse::<SidComponents>(),
-            Err(InvalidSidFormat::InvalidIdentifierAuthority)
-        ));
-        assert_matches!(
-            "S-1-0xnothex-32".parse::<SidComponents>(),
-            Err(InvalidSidFormat::InvalidIdentifierAuthority)
-        ));
+        assert_eq!(
+            "S-1-not-an-authority-32".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::InvalidIdentifierAuthority)
+        );
+        assert_eq!(
+            "S-1-0xnothex-32".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::InvalidIdentifierAuthority)
+        );
     }
 
     #[test]
     fn rejects_identifier_authority_above_48_bits() {
-        assert_matches!(
-            "S-1-281474976710656-1".parse::<SidComponents>(),
-            Err(InvalidSidFormat::IdentifierAuthorityOutOfRange {
+        assert_eq!(
+            "S-1-281474976710656-1".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::IdentifierAuthorityOutOfRange {
                 value: 281_474_976_710_656,
                 max: MAX_IDENTIFIER_AUTHORITY,
             })
-        ));
-        assert_matches!(
-            "S-1-0x1000000000000-1".parse::<SidComponents>(),
-            Err(InvalidSidFormat::IdentifierAuthorityOutOfRange {
+        );
+        assert_eq!(
+            "S-1-0x1000000000000-1".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::IdentifierAuthorityOutOfRange {
                 value: 281_474_976_710_656,
                 max: MAX_IDENTIFIER_AUTHORITY,
             })
-        ));
+        );
     }
 
     #[test]
     fn reports_missing_sub_authority() {
-        assert_matches!(
-            "S-1-5".parse::<SidComponents>(),
-            Err(InvalidSidFormat::MissingSubAuthority)
-        ));
+        assert_eq!(
+            "S-1-5".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::MissingSubAuthority)
+        );
     }
 
     #[test]
     fn reports_invalid_sub_authority() {
-        assert_matches!(
-            "S-1-5-not-a-rid".parse::<SidComponents>(),
-            Err(InvalidSidFormat::InvalidSubAuthority { index: 0 })
-        ));
+        assert_eq!(
+            "S-1-5-not-a-rid".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::InvalidSubAuthority { index: 0 })
+        );
     }
 
     #[test]
     fn reports_sub_authority_out_of_range() {
-        assert_matches!(
-            "S-1-5-4294967296".parse::<SidComponents>(),
-            Err(InvalidSidFormat::SubAuthorityOutOfRange {
+        assert_eq!(
+            "S-1-5-4294967296".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::SubAuthorityOutOfRange {
                 index: 0,
                 value: 4_294_967_296,
                 max: 4_294_967_295,
             })
-        ));
+        );
     }
 
     #[test]
     fn reports_invalid_sub_authority_index() {
-        assert_matches!(
-            "S-1-5-32-not-a-rid".parse::<SidComponents>(),
-            Err(InvalidSidFormat::InvalidSubAuthority { index: 1 })
-        ));
+        assert_eq!(
+            "S-1-5-32-not-a-rid".parse::<SidComponents>().err(),
+            Some(InvalidSidFormat::InvalidSubAuthority { index: 1 })
+        );
     }
 
     #[test]
     fn reports_too_many_sub_authorities() {
-        assert_matches!(
-            "S-1-5-1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16".parse::<SidComponents>(),
-            Err(InvalidSidFormat::TooManySubAuthorities {
+        assert_eq!(
+            "S-1-5-1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16"
+                .parse::<SidComponents>()
+                .err(),
+            Some(InvalidSidFormat::TooManySubAuthorities {
                 count: 16,
                 max: MAX_SUBAUTHORITY_COUNT_USIZE,
             })
-        ));
+        );
     }
 }
