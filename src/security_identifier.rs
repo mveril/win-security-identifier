@@ -1,18 +1,21 @@
+use crate::ConstSid;
 pub use crate::InvalidSidFormat;
 use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
 use crate::StackSid;
+use crate::internal::SidLenValid;
+use crate::utils;
 use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{borrow::ToOwned, boxed::Box};
 use core::alloc::Layout;
-use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::mem::offset_of;
 use core::ops::Deref;
 mod maybe_uninit;
+use core::borrow::{Borrow, BorrowMut};
 use core::ops::DerefMut;
 use core::ptr;
 use core::str::FromStr;
@@ -37,10 +40,9 @@ use std::borrow::ToOwned;
 /// ```rust
 /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
 /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts:
-/// let revision = 1u8;
 /// let ia = SidIdentifierAuthority::NT_AUTHORITY; // example ctor
 /// let subs = [32u32, 544u32];
-/// let sid = SecurityIdentifier::try_new(revision, ia, &subs)
+/// let sid = SecurityIdentifier::try_new(ia, &subs)
 ///     .expect("valid SID parts");
 /// println!("{}", sid); // e.g., "S-1-5-32-544"
 /// ```
@@ -51,50 +53,46 @@ pub struct SecurityIdentifier {
 impl Debug for SecurityIdentifier {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&*self.inner, f)
+        utils::debug_print::<Self>(stringify!(SecurityIdentifier), self, f)
     }
 }
 
 impl SecurityIdentifier {
     /// Creates a new `SecurityIdentifier` from parts, validating input.
     ///
-    /// Returns `None` if `sub_authority` length is out of bounds (not in 1..=15).
+    /// Returns `None` if `sub_authorities` length is out of bounds (not in 1..=15).
     ///
     /// # Parameters
-    /// - `revision`: SID revision (usually `1`).
     /// - `identifier_authority`: High-level authority (e.g. `NT_AUTHORITY`).
-    /// - `sub_authority`: Slice of sub-authorities (1..=15 elements).
+    /// - `sub_authorities`: Slice of sub-authorities (1..=15 elements).
     ///
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
     /// let sid = SecurityIdentifier::try_new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32u32, 544u32]
     /// ).unwrap();
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
+    /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
     #[inline]
     pub fn try_new<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
-        revision: u8,
         identifier_authority: I,
-        sub_authority: S,
+        sub_authorities: S,
     ) -> Option<Self> {
-        let sub_authority = sub_authority.as_ref();
+        let sub_authorities = sub_authorities.as_ref();
         // SAFETY: sub_authority_count is correctly validated by guard.
-        sub_authority_size_guard(sub_authority.len()).then_some(unsafe {
-            Self::new_unchecked(revision, identifier_authority, sub_authority)
-        })
+        sub_authority_size_guard(sub_authorities.len())
+            .then_some(unsafe { Self::new_unchecked(identifier_authority, sub_authorities) })
     }
 
     /// Creates a new `SecurityIdentifier` from parts **without validation**.
     ///
     /// # Safety
-    /// - Caller must ensure `sub_authority` length is in `1..=15`.
+    /// - Caller must ensure `sub_authorities` length is in `1..=15`.
     /// - `identifier_authority` must be a valid Windows authority.
     ///
     /// Violating these preconditions results in undefined behavior or later panics.
@@ -104,28 +102,26 @@ impl SecurityIdentifier {
     /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
     /// let sid = unsafe {
     ///     SecurityIdentifier::new_unchecked(
-    ///         1,
     ///         SidIdentifierAuthority::NT_AUTHORITY,
     ///         [32u32, 544u32],
     ///     )
     /// };
     /// assert_eq!(sid.revision, 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [32u32, 544u32]);
+    /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
     #[must_use]
     #[inline]
     pub unsafe fn new_unchecked<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
-        revision: u8,
         identifier_authority: I,
-        sub_authority: S,
+        sub_authorities: S,
     ) -> Self {
-        let sub_authority = sub_authority.as_ref();
+        let sub_authorities = sub_authorities.as_ref();
         #[expect(
             clippy::cast_possible_truncation,
             reason = "Precondition of sub_authority_is_checked in the doc."
         )]
-        let sub_authority_count = sub_authority.len() as u8;
+        let sub_authority_count = sub_authorities.len() as u8;
         let identifier_authority = identifier_authority.into();
         // SAFETY: sub_authority_count is validated by guard.
         let size_info = unsafe { SidSizeInfo::from_count(sub_authority_count).unwrap_unchecked() };
@@ -138,10 +134,10 @@ impl SecurityIdentifier {
         )]
         // Safety: We know the ptr is not null so we can write
         unsafe {
-            (*sid_ptr).revision = revision;
+            (*sid_ptr).revision = Sid::REVISION;
             (*sid_ptr).sub_authority_count = sub_authority_count;
             (*sid_ptr).identifier_authority = identifier_authority;
-            (*sid_ptr).sub_authority.copy_from_slice(sub_authority);
+            (*sid_ptr).sub_authorities.copy_from_slice(sub_authorities);
         }
         // Safety: all is written so we can assume init
         unsafe { uninit.assume_init() }
@@ -202,7 +198,7 @@ impl SecurityIdentifier {
             ptr::copy_nonoverlapping(
                 bytes.as_ptr(),
                 uninit.as_mut_ptr().cast::<u8>(),
-                size_info.get_layout().size(),
+                size_info.layout().size(),
             );
         }
         // Safety: all is written so we can init.
@@ -218,7 +214,6 @@ impl SecurityIdentifier {
     /// ```rust
     /// # use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority, Sid};
     /// let admin = SecurityIdentifier::try_new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32, 544],
     /// ).unwrap();
@@ -243,7 +238,6 @@ impl SecurityIdentifier {
     /// // Create a mutable ConstSid with three sub-authorities:
     /// // S-1-5-21-1000 (revision 1, authority 5, sub-authorities [21, 1000])
     /// let mut owned = SecurityIdentifier::try_new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     &[21u32, 100u32, 0u32],
     /// ).unwrap();
@@ -277,7 +271,7 @@ impl TryFrom<&[u8]> for SecurityIdentifier {
 impl<'a> From<&'a Sid> for SecurityIdentifier {
     #[inline]
     fn from(value: &'a Sid) -> Self {
-        let binary = value.as_binary();
+        let binary = value.as_bytes();
         // Safety: sub_authority_count is known to be valid because `self` is valid.
         unsafe { Self::from_bytes_unchecked(binary) }
     }
@@ -293,9 +287,8 @@ impl FromStr for SecurityIdentifier {
             // SAFETY: sub_authority_count is known to be valid because `SidComponents::from_str` validated it.
             unsafe {
                 Self::new_unchecked(
-                    components.revision,
                     components.identifier_authority,
-                    components.sub_authority.as_slice(),
+                    components.sub_authorities.as_slice(),
                 )
             },
         )
@@ -311,11 +304,16 @@ impl ToOwned for Sid {
 }
 
 impl Borrow<Sid> for SecurityIdentifier {
-    delegate! {
-        to self.inner {
-            #[inline]
-            fn borrow(&self) -> &Sid;
-        }
+    #[inline]
+    fn borrow(&self) -> &Sid {
+        self.as_sid()
+    }
+}
+
+impl BorrowMut<Sid> for SecurityIdentifier {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
     }
 }
 
@@ -345,6 +343,13 @@ impl AsRef<Sid> for SecurityIdentifier {
     }
 }
 
+impl AsRef<[u8]> for SecurityIdentifier {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 impl AsMut<Sid> for SecurityIdentifier {
     delegate! {
         to self.inner {
@@ -364,7 +369,7 @@ impl Clone for SecurityIdentifier {
         if Layout::for_value(self.as_sid()) == Layout::for_value(source.as_sid()) {
             // Safety: We checked layout is ok
             unsafe {
-                self.as_binary_mut().copy_from_slice(source.as_binary());
+                self.as_bytes_mut().copy_from_slice(source.as_bytes());
             }
         } else {
             *self = source.clone();
@@ -388,10 +393,13 @@ impl PartialEq<Sid> for SecurityIdentifier {
     }
 }
 
-impl PartialEq<SecurityIdentifier> for Sid {
+impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
+where
+    [u32; N]: SidLenValid,
+{
     #[inline]
-    fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self == other.as_ref()
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self.eq(other.as_sid())
     }
 }
 
@@ -402,17 +410,10 @@ impl PartialEq<StackSid> for SecurityIdentifier {
     }
 }
 
-impl PartialEq<SecurityIdentifier> for StackSid {
-    #[inline]
-    fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self == other.as_sid()
-    }
-}
-
 impl PartialEq for SecurityIdentifier {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        AsRef::<Sid>::as_ref(self) == other.as_ref()
+        self.as_sid() == other.as_sid()
     }
 }
 
@@ -420,6 +421,30 @@ impl From<Box<Sid>> for SecurityIdentifier {
     #[inline]
     fn from(value: Box<Sid>) -> Self {
         Self { inner: value }
+    }
+}
+
+impl From<StackSid> for SecurityIdentifier {
+    #[inline]
+    fn from(value: StackSid) -> Self {
+        value.as_sid().into()
+    }
+}
+
+impl From<&StackSid> for SecurityIdentifier {
+    #[inline]
+    fn from(value: &StackSid) -> Self {
+        value.as_sid().into()
+    }
+}
+
+impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn from(value: ConstSid<N>) -> Self {
+        value.as_sid().to_owned()
     }
 }
 
@@ -439,6 +464,7 @@ pub mod test {
     use super::super::sid_identifier_authority::test::arb_identifier_authority;
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfills_ptr::metadata;
+    use crate::well_known;
     use core::hash::Hash;
     use core::hash::Hasher;
     #[cfg(has_ptr_metadata)]
@@ -446,13 +472,12 @@ pub mod test {
     use proptest::prelude::*;
     pub fn arb_security_identifier() -> impl Strategy<Value = SecurityIdentifier> {
         (
-            Just(1u8), // revision
             arb_identifier_authority(),
             proptest::collection::vec(any::<u32>(), 1..=15),
         )
-            .prop_map(|(revision, identifier_authority, sub_authorities)| {
+            .prop_map(|(identifier_authority, sub_authorities)| {
                 let subs = &sub_authorities.as_slice();
-                SecurityIdentifier::try_new(revision, identifier_authority, subs)
+                SecurityIdentifier::try_new(identifier_authority, subs)
                     .expect("Failed to generate SecurityIdentifier")
             })
     }
@@ -467,7 +492,7 @@ pub mod test {
             let sid: &Sid = security_identifier.as_ref();
 
             // Check length of sub_authorities
-            assert_eq!(sid.get_sub_authorities().len(), sid.sub_authority_count as usize);
+            assert_eq!(sid.sub_authorities().len(), sid.sub_authority_count as usize);
 
             // Display format: commence par S-1-
             let disp = format!("{sid}");
@@ -504,14 +529,14 @@ pub mod test {
         #[test]
         fn test_sub_authority_slice_bounds(security_identifier in arb_security_identifier()) {
             let sid: &Sid = &security_identifier;
-            let subs = sid.get_sub_authorities();
+            let subs = sid.sub_authorities();
             assert!(!subs.is_empty() && subs.len() <= 15, "sub_authorities length must be in 1..=15");
         }
 
          #[test]
         fn test_ptr_metadata(security_identifier in arb_security_identifier()) {
             let sid: &Sid = &security_identifier;
-            prop_assert_eq!(sid.sub_authority_count as usize, sid.get_sub_authorities().len());
+            prop_assert_eq!(sid.sub_authority_count as usize, sid.sub_authorities().len());
             prop_assert_eq!(sid.sub_authority_count as usize, metadata(sid));
         }
 
@@ -520,6 +545,17 @@ pub mod test {
         fn test_sid_to_string_from_string(sid1 in arb_security_identifier()){
             let sid2: SecurityIdentifier = sid1.to_string().parse().unwrap();
             prop_assert_eq!(sid1, sid2);
+        }
+
+        fn test_security_identifier_clone(sid in arb_security_identifier()){
+            prop_assert_eq!(sid.clone(), sid);
+
+        }
+
+        #[test]
+        fn test_security_identifier_clone_from(mut sid in arb_security_identifier(), sid_source in arb_security_identifier()){
+            sid.clone_from(&sid_source);
+            prop_assert_eq!(sid, sid_source);
         }
     }
 
@@ -538,7 +574,7 @@ pub mod test {
         proptest! {
             #[test]
             fn test_init_sid_matches_rust_bytes(sid in arb_security_identifier()) {
-                let subauth = sid.get_sub_authorities();
+                let subauth = sid.sub_authorities();
                 #[expect(clippy::cast_possible_truncation, reason="No truncation here because of range of subathority is between 1-15")]
                 let n = subauth.len() as u8;
                 // SAFETY: GetSidLengthRequired is safe for sid Length
@@ -565,7 +601,7 @@ pub mod test {
                     let win_len = GetLengthSid(sid_ptr.cast());
                     let win_bytes = slice::from_raw_parts(sid_ptr as *const u8, win_len as usize);
 
-                    let rust_bytes = sid.as_binary();
+                    let rust_bytes = sid.as_bytes();
                     prop_assert_eq!(
                         win_bytes,
                         rust_bytes,
@@ -592,5 +628,13 @@ pub mod test {
             };
             assert_eq!(result, None, "SID is not valid: {result:?}");
         }
+    }
+    #[test]
+    fn test_debug() {
+        let sample_sid = well_known::NULL;
+        assert_eq!(
+            format!("{:?}", SecurityIdentifier::from(sample_sid.as_sid())),
+            format!("{:}(S-1-0-0)", stringify!(SecurityIdentifier)),
+        );
     }
 }

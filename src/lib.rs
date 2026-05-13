@@ -11,7 +11,7 @@
 //! - [`SidIdentifierAuthority`]: the 6-byte authority component of SIDs.
 //!
 //! ## Overview
-//! - **Zero-copy access** to the binary representation via [`Sid::as_binary`].
+//! - **Zero-copy access** to the binary representation via [`Sid::as_bytes`].
 //! - **Ownership & cloning** via [`SecurityIdentifier`] which manages allocation
 //!   and deallocation safely.
 //! - **Const construction** via [`ConstSid`], ideal for well-known SIDs.
@@ -21,26 +21,28 @@
 //! - [`Sid`] is a layout-sensitive DST; it is meant to be **owned** by higher-level
 //!   types like [`SecurityIdentifier`]. Creating malformed instances or using
 //!   buffers with the wrong size is **undefined behavior**.
-//! - Functions marked `unsafe` (e.g., [`Sid::as_binary`]) require that the backing
+//! - Functions marked `unsafe` (e.g., [`Sid::as_bytes`]) require that the backing
 //!   allocation and invariants are respected. See each item’s `# Safety` section.
 //!
 //! ## Layout & ABI
 //! The memory layout of [`Sid`] matches Windows: a `repr(C)` header followed by
-//! `sub_authority_count` 32-bit sub-authorities. Use [`Sid::get_current_min_layout`]
+//! `sub_authority_count` 32-bit sub-authorities. Use [`Sid::min_layout`]
 //! to compute the minimal [`Layout`] for a given instance. [`SecurityIdentifier`]
 //! uses this to allocate correctly.
 //!
 //! ## Examples
 //! ### Create a SID from parts
 //! ```rust
+//! # #[cfg(feature = "alloc")]
+//! # {
 //! use win_security_identifier::{SecurityIdentifier, SidIdentifierAuthority};
 //!
 //! let sid = SecurityIdentifier::try_new(
-//!     1, // revision
 //!     SidIdentifierAuthority::NT_AUTHORITY,
 //!     [32u32, 544u32], // BUILTIN\Administrators => S-1-5-32-544
 //! ).expect("valid SID");
 //! assert_eq!(sid.to_string(), "S-1-5-32-544");
+//! # }
 //! ```
 //!
 //! ### Use a const SID
@@ -48,19 +50,23 @@
 //! use win_security_identifier::{ConstSid, SidIdentifierAuthority};
 //!
 //! const ADMIN: ConstSid<2> = ConstSid::new(
-//!     1,
 //!     SidIdentifierAuthority::NT_AUTHORITY,
 //!     [32, 544],
 //! );
 //!
-//! // Convert to owned SID for operations that need ownership
+//! assert_eq!(ADMIN.as_sid().rid(), 544);
+//!
+//! # #[cfg(feature = "alloc")]
+//! # {
+//! // Convert to owned SID for operations that need ownership.
 //! let owned = win_security_identifier::SecurityIdentifier::from(ADMIN);
 //! assert_eq!(owned.to_string(), "S-1-5-32-544");
+//! # }
 //! ```
 //!
 //! ### (Windows) Get current user SID
 //! ```no_run
-//! # #[cfg(windows)]
+//! # #[cfg(all(windows, feature = "std", feature = "alloc"))]
 //! # {
 //! # use win_security_identifier::{SecurityIdentifier};
 //! use win_security_identifier::GetCurrentSid;
@@ -71,14 +77,14 @@
 //!
 //! ### (Windows) Resolve DOMAIN\\Name from a SID
 //! ```no_run
-//! # #[cfg(windows)]
+//! # #[cfg(all(windows, feature = "std", feature = "alloc"))]
 //! # {
 //! use win_security_identifier::{SecurityIdentifier};
 //! use win_security_identifier::sid_lookup::SidType;
 //! // ... obtain a `SecurityIdentifier` or `&Sid` named `sid`
 //! # use win_security_identifier::{SidIdentifierAuthority, ConstSid};
 //! # let sid = win_security_identifier::SecurityIdentifier::from(ConstSid::<2>::new(
-//! #     1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]
+//! #     SidIdentifierAuthority::NT_AUTHORITY, [32, 544]
 //! # ));
 //! let res = sid.lookup_local_sid().unwrap().unwrap();
 //! println!("{} => {}", sid, res.domain_name); // e.g. "MACHINE\\User"
@@ -95,19 +101,18 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(needs_ptr_metadata_feature, feature(ptr_metadata))]
-#![cfg_attr(needs_layout_for_ptr_feature, feature(layout_for_ptr))]
 #[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
 
+#[cfg(doc)]
+use core::alloc::Layout;
 #[cfg(all(windows, feature = "std"))]
 pub use ext::{GetCurrentSid, TokenError};
 #[cfg(feature = "alloc")]
 pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]
 pub use sid::sid_lookup;
-#[cfg(doc)]
-pub use std::alloc::Layout;
 mod ext;
 
 #[cfg(not(has_ptr_metadata))]

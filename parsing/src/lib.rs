@@ -11,18 +11,16 @@ pub const MAX_SUBAUTHORITY_COUNT: u8 = 15;
 const MAX_SUBAUTHORITY_COUNT_USIZE: usize = MAX_SUBAUTHORITY_COUNT as usize;
 
 pub struct SidComponents {
-    /// The SID revision value, generally 1.
-    pub revision: u8,
     /// The SID identifier authority value.
     pub identifier_authority: [u8; 6],
     /// The SID sub-authority values.
-    pub sub_authority: ArrayVec<u32, MAX_SUBAUTHORITY_COUNT_USIZE>,
+    pub sub_authorities: ArrayVec<u32, MAX_SUBAUTHORITY_COUNT_USIZE>,
 }
 
 /// Error type returned when parsing a SID string fails due to an invalid format.
 ///
 /// This is used by `FromStr<SecurityIdentifier>`.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq, Hash)]
 pub struct InvalidSidFormat;
 
 impl Display for InvalidSidFormat {
@@ -49,6 +47,10 @@ impl FromStr for SidComponents {
             .parse::<u8>()
             .map_err(|_| InvalidSidFormat)?;
 
+        if revision != 1 {
+            return Err(InvalidSidFormat);
+        }
+
         let identifier_authority = s_cmp
             .next()
             .ok_or(InvalidSidFormat)
@@ -58,19 +60,20 @@ impl FromStr for SidComponents {
                 #[expect(clippy::unwrap_used)]
                 bytes[2..].try_into().unwrap()
             })?;
-        let mut sub_authority = ArrayVec::<u32, MAX_SUBAUTHORITY_COUNT_USIZE>::new();
+        let mut sub_authorities = ArrayVec::<u32, MAX_SUBAUTHORITY_COUNT_USIZE>::new();
         for item in s_cmp {
             let item = item.parse::<u32>().map_err(|_| InvalidSidFormat)?;
-            sub_authority.try_push(item).map_err(|_| InvalidSidFormat)?;
+            sub_authorities
+                .try_push(item)
+                .map_err(|_| InvalidSidFormat)?;
         }
-        if sub_authority.len() < MIN_SUBAUTHORITY_COUNT_USIZE {
+        if sub_authorities.len() < MIN_SUBAUTHORITY_COUNT_USIZE {
             return Err(InvalidSidFormat);
         }
 
         Ok(Self {
-            revision,
             identifier_authority,
-            sub_authority,
+            sub_authorities,
         })
     }
 }

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Windows SID documentation
+    url: https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-identifiers
+    about: Use Microsoft documentation for questions about Windows SID concepts rather than this crate.

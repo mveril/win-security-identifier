@@ -14,7 +14,13 @@ mod windows;
 #[cfg(all(windows, feature = "std"))]
 pub use windows::sid_lookup;
 
+use crate::ConstSid;
 use crate::InvalidSidFormat;
+#[cfg(feature = "alloc")]
+use crate::SecurityIdentifier;
+use crate::StackSid;
+use crate::internal::SidLenValid;
+use crate::utils;
 use crate::utils::validate_sid_bytes_unaligned;
 
 pub use parsing::MAX_SUBAUTHORITY_COUNT;
@@ -40,28 +46,27 @@ use core::{
 /// - `revision`: SID revision (commonly `1`),
 /// - `sub_authority_count`: number of [u32] elements in the trailing slice,
 /// - `identifier_authority`: 6-byte identifier authority,
-/// - `sub_authority`: trailing slice of [u32] elements (length = `sub_authority_count`).
+/// - `sub_authorities`: trailing slice of [u32] elements (length = `sub_authority_count`).
 ///
 /// # Layout
 /// The layout matches the Windows SID memory representation:
 /// a fixed header followed by `sub_authority_count` 32-bit values.
 ///
 /// # Invariants
-/// - `sub_authority` length equals `sub_authority_count`.
+/// - `sub_authorities` length equals `sub_authority_count`.
 /// - `sub_authority_count` ∈ 1..=15 for valid Windows SIDs.
 /// - The allocation size must be consistent with `SidSizeInfo`.
 ///
 /// Instances are typically created and owned by a safe wrapper (e.g. `SecurityIdentifier`).
 #[repr(C)]
-#[derive(Debug)]
 pub struct Sid {
-    /// The SID revision value, generally 1.
+    /// The SID revision value, (currently only 1 is supported).
     pub revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
-    /// The SID sub-authority values.
-    pub sub_authority: [u32],
+    /// The SID sub authority values.
+    pub sub_authorities: [u32],
 }
 
 /// Fixed-size header of a SID (no trailing sub-authorities).
@@ -78,6 +83,8 @@ pub struct SidHead {
 pub const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 
 impl Sid {
+    /// The only valid revision value for now (No other sid format are defined by microsoft)
+    pub const REVISION: u8 = 1;
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
     ///
     /// The slice covers the header and the exact number of sub-authorities currently set
@@ -89,19 +96,19 @@ impl Sid {
     /// let const_sid = well_known::BUILTIN_ADMINISTRATORS;
     /// let sid: &Sid = const_sid.as_ref();
     /// unsafe {
-    ///     let bytes = sid.as_binary();
+    ///     let bytes = sid.as_bytes();
     ///     assert_eq!(bytes, [1, 2, 0, 0, 0, 0, 0, 5, 32, 0, 0, 0, 32, 2, 0, 0]);
     /// }
     /// ```
     #[inline]
     #[must_use]
-    pub const fn as_binary(&self) -> &[u8] {
+    pub const fn as_bytes(&self) -> &[u8] {
         // Safety:
         // - The instance must be fully initialized and backed by a valid allocation large enough
-        //   for the computed layout (see `get_current_min_layout`).
+        //   for the computed layout (see [`current_min_layout`]).
         // - The lifetime of the returned slice is tied to `&self`.
         unsafe {
-            let layout = self.get_current_min_layout();
+            let layout = self.min_layout();
             let len = layout.size();
             slice::from_raw_parts(core::ptr::from_ref(self).cast::<u8>(), len)
         }
@@ -128,16 +135,16 @@ impl Sid {
     /// This can be used for low-level, in-place updates when you know exactly what you are doing.
     ///
     /// # Safety
-    /// - Same preconditions as `as_binary`.
+    /// - Same preconditions as `as_bytes`.
     /// - Mutating the buffer must preserve SID invariants (e.g., do not desynchronize
     ///   `sub_authority_count` and the tail length).
     #[allow(dead_code)]
-    pub(crate) const unsafe fn as_binary_mut(&mut self) -> &mut [u8] {
+    pub(crate) const unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
         // Safety: Precondition definied in the method doc.
         unsafe {
             slice::from_raw_parts_mut(
                 core::ptr::from_ref(self).cast_mut().cast::<u8>(),
-                self.get_current_min_layout().size(),
+                self.min_layout().size(),
             )
         }
     }
@@ -151,18 +158,18 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
-    /// let const_sid = ConstSid::<1>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [1]);
+    /// let const_sid = ConstSid::<1>::new(SidIdentifierAuthority::NT_AUTHORITY, [1]);
     /// let sid = const_sid.as_sid();
-    /// let subs = sid.get_sub_authorities();
+    /// let subs = sid.sub_authorities();
     /// assert_eq!(subs, &[1]);
     /// ```
     #[must_use]
     #[inline]
-    pub const fn get_sub_authorities(&self) -> &[u32] {
+    pub const fn sub_authorities(&self) -> &[u32] {
         // Safety: self is valid and fully initialized.
         unsafe {
             slice::from_raw_parts(
-                self.sub_authority.as_ptr(),
+                self.sub_authorities.as_ptr(),
                 self.sub_authority_count as usize,
             )
         }
@@ -177,12 +184,30 @@ impl Sid {
     /// - interoperate with low-level allocators.
     #[must_use]
     #[inline]
-    pub const fn get_current_min_layout(&self) -> Layout {
+    pub const fn min_layout(&self) -> Layout {
         if let Some(info) = SidSizeInfo::from_count(self.sub_authority_count) {
-            info.get_layout()
+            info.layout()
         } else {
             unreachable!()
         }
+    }
+
+    /// Returns the RID (Relative Identifier), which is the last sub-authority in the SID.
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
+    /// let const_sid = ConstSid::<3>::new(SidIdentifierAuthority::NT_AUTHORITY, [1, 2, 3]);
+    /// let sid = const_sid.as_sid();
+    /// assert_eq!(sid.rid(), 3);
+    /// ```
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "N is guaranteed to be greater than 0"
+    )]
+    #[must_use]
+    #[inline]
+    pub const fn rid(&self) -> u32 {
+        self.sub_authorities()[self.sub_authority_count as usize - 1]
     }
 
     /// Attempts to construct a `&Sid` from a raw byte slice.
@@ -194,13 +219,13 @@ impl Sid {
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, SidIdentifierAuthority, ConstSid};
-    /// # let const_sid = ConstSid::<1>::new(1,  SidIdentifierAuthority::NT_AUTHORITY, [20u32]);
+    /// # let const_sid = ConstSid::<1>::new(SidIdentifierAuthority::NT_AUTHORITY, [20u32]);
     /// # let bytes = const_sid.as_bytes();
     /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts and :
     /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");
-    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.revision, Sid::REVISION);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
-    /// assert_eq!(sid.get_sub_authorities(), [20u32]);
+    /// assert_eq!(sid.sub_authorities(), [20u32]);
     #[inline]
     pub const unsafe fn from_bytes(value: &[u8]) -> Result<&Self, InvalidSidFormat> {
         if let Err(err) = validate_sid_bytes_unaligned(value) {
@@ -213,7 +238,19 @@ impl Sid {
     }
 }
 
-// --- Standard trait impls intentionally left undocumented (per your request) ---
+impl AsRef<[u8]> for Sid {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl Debug for Sid {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        utils::debug_print(stringify!(Sid), self, f)
+    }
+}
 
 impl Display for Sid {
     #[inline]
@@ -232,7 +269,7 @@ impl Display for Sid {
         }
 
         // SubAuthorities
-        for &sub_auth in self.get_sub_authorities() {
+        for &sub_auth in self.sub_authorities() {
             write!(f, "-{sub_auth}")?;
         }
         Ok(())
@@ -242,30 +279,59 @@ impl Display for Sid {
 impl PartialEq for Sid {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.as_binary() == other.as_binary()
+        self.as_bytes() == other.as_bytes()
     }
 }
 
 impl Eq for Sid {}
+
+#[cfg(feature = "alloc")]
+impl PartialEq<SecurityIdentifier> for Sid {
+    #[inline]
+    fn eq(&self, other: &SecurityIdentifier) -> bool {
+        self == other.as_sid()
+    }
+}
+
+impl<const N: usize> PartialEq<ConstSid<N>> for Sid
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn eq(&self, other: &ConstSid<N>) -> bool {
+        self == other.as_sid()
+    }
+}
+
+impl PartialEq<StackSid> for Sid {
+    #[inline]
+    fn eq(&self, other: &StackSid) -> bool {
+        self == other.as_sid()
+    }
+}
+
 impl Hash for Sid {
     #[inline]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
         self.identifier_authority.hash(state);
-        Hash::hash_slice(self.get_sub_authorities(), state);
+        Hash::hash_slice(self.sub_authorities(), state);
     }
 }
 
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[cfg(test)]
 mod tests {
+    use crate::well_known;
     #[cfg(feature = "alloc")]
     use crate::{SecurityIdentifier, arb_security_identifier};
     use core::hash::Hasher;
     use core::ops::Deref;
 
     use super::*;
+    use arrayvec::ArrayString;
+    use core::fmt::Write;
     use proptest::prelude::*;
 
     #[cfg(feature = "std")]
@@ -303,7 +369,7 @@ mod tests {
 
         #[test]
         fn sid_sub_authorities_len(sid in arb_security_identifier()) {
-            let subs = sid.get_sub_authorities();
+            let subs = sid.sub_authorities();
             prop_assert_eq!(subs.len(), sid.sub_authority_count as usize);
         }
     }
@@ -423,5 +489,17 @@ mod tests {
                 }
 
         }
+    }
+
+    #[test]
+    #[expect(clippy::use_debug, reason = "test verifies Debug output")]
+    fn test_debug() {
+        let sample_sid = well_known::NULL;
+        let mut output = ArrayString::<32>::new();
+        assert!(
+            write!(&mut output, "{:?}", sample_sid.as_sid()).is_ok(),
+            "debug output should fit fixed buffer"
+        );
+        assert_eq!(output.as_str(), "Sid(S-1-0-0)",);
     }
 }

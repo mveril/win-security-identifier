@@ -2,19 +2,19 @@
 use crate::SecurityIdentifier;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
-use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid};
+use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid, utils};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
-use ::alloc::borrow::ToOwned;
+use alloc::borrow::ToOwned;
 #[cfg(has_ptr_metadata)]
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
     array::TryFromSliceError,
+    borrow::{Borrow, BorrowMut},
+    fmt::Debug,
     fmt::{self, Display},
     hash::{self, Hash},
     ptr,
 };
-#[cfg(feature = "std")]
-use std::borrow::ToOwned;
 
 /// Fixed-size, compile-time Security Identifier (SID).
 ///
@@ -30,17 +30,22 @@ use std::borrow::ToOwned;
 ///
 /// # Examples
 /// ```rust
-/// # use win_security_identifier::{ConstSid, well_known, SidIdentifierAuthority, SecurityIdentifier};
+/// # use win_security_identifier::{ConstSid, well_known};
 /// const ADMIN_ALIAS: ConstSid<2> = well_known::BUILTIN_ADMINISTRATORS;
-/// assert_eq!(ADMIN_ALIAS.to_string(), "S-1-5-32-544");
+/// assert_eq!(ADMIN_ALIAS.as_sid().rid(), 544);
+///
+/// # #[cfg(feature = "alloc")]
+/// # {
+/// # use win_security_identifier::SecurityIdentifier;
 /// // It can be converted from (if const is correct) and to owned.
 /// let owned: SecurityIdentifier = ADMIN_ALIAS.into();
 /// assert_eq!(owned.to_string(), ADMIN_ALIAS.to_string());
 /// assert_eq!(owned, ADMIN_ALIAS);
-/// assert_eq!(ConstSid::<2>::try_from(owned.as_ref()).unwrap(), ADMIN_ALIAS);
+/// assert_eq!(ConstSid::<2>::try_from(owned.as_sid()).unwrap(), ADMIN_ALIAS);
 /// assert!(ConstSid::<3>::try_from(owned).is_err());
+/// # }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct ConstSid<const N: usize>
 where
@@ -52,8 +57,38 @@ where
     sub_authority_count: u8,
     /// 6-byte identifier authority.
     pub identifier_authority: SidIdentifierAuthority,
-    /// Fixed-size list of sub-authorities.
-    pub sub_authority: [u32; N],
+    /// Fixed-size list of sub authorities.
+    pub sub_authorities: [u32; N],
+}
+
+impl<const N: usize> Debug for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        utils::debug_print(stringify!(ConstSid), self, f)
+    }
+}
+
+impl<const N: usize> Borrow<Sid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn borrow(&self) -> &Sid {
+        self.as_sid()
+    }
+}
+
+impl<const N: usize> BorrowMut<Sid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
+    }
 }
 
 impl<const N: usize> AsRef<Sid> for ConstSid<N>
@@ -63,6 +98,16 @@ where
     #[inline]
     fn as_ref(&self) -> &Sid {
         self.as_sid()
+    }
+}
+
+impl<const N: usize> AsRef<[u8]> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
     }
 }
 
@@ -77,25 +122,41 @@ where
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
-    /// let s = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
+    /// let s = ConstSid::<2>::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
     /// assert_eq!(s.to_string(), "S-1-5-32-544")
     #[must_use]
     #[inline]
     pub const fn new(
-        revision: u8,
         identifier_authority: SidIdentifierAuthority,
         sub_authority: [u32; N],
     ) -> Self {
         Self {
-            revision,
+            revision: 1,
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "N is guaranteed to be lower than 256 because it is lower than 16"
             )]
             sub_authority_count: N as u8,
-            sub_authority,
+            sub_authorities: sub_authority,
             identifier_authority,
         }
+    }
+    /// Returns the RID (Relative Identifier), which is the last sub-authority in the SID.
+    /// # Examples
+    /// ```rust
+    /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
+    /// let const_sid = ConstSid::<3>::new(SidIdentifierAuthority::NT_AUTHORITY, [1, 2, 3]);
+    /// let sid = const_sid.as_sid();
+    /// assert_eq!(sid.rid(), 3);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn rid(&self) -> u32 {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "N is guaranteed to be greater than 0"
+        )]
+        self.sub_authorities[N - 1]
     }
 
     /// Returns a reference to this `ConstSid` as a dynamically-sized [`Sid`].
@@ -113,7 +174,7 @@ where
     #[must_use]
     pub const fn as_sid(&self) -> &Sid {
         // SAFETY: We construct a fat pointer to `Sid` with metadata `N` that
-        // matches `sub_authority.len()`. The header layout is compatible
+        // matches `sub_authorities.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
         unsafe { &*from_raw_parts(ptr::from_ref(self).cast::<()>(), N) }
     }
@@ -130,7 +191,6 @@ where
     /// // Create a mutable ConstSid with three sub-authorities:
     /// // S-1-5-21-1000 (revision 1, authority 5, sub-authorities [21, 1000])
     /// let mut cs = ConstSid::<3>::new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [21u32, 100u32, 0u32],
     /// );
@@ -149,7 +209,7 @@ where
     #[inline]
     pub const fn as_sid_mut(&mut self) -> &mut Sid {
         // Safety: We construct a fat pointer to `Sid` with metadata `N` that
-        // matches `sub_authority.len()`. The header layout is compatible
+        // matches `sub_authorities.len()`. The header layout is compatible
         // (`repr(C)`), and the trailing slice length equals N.
         unsafe { &mut *from_raw_parts_mut(ptr::from_mut(self).cast::<()>(), N) }
     }
@@ -163,7 +223,6 @@ where
     /// ```rust
     /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
     /// const ADMIN: ConstSid<2> = ConstSid::new(
-    ///     1,
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32, 544],
     /// );
@@ -184,28 +243,20 @@ where
         // creating a slice from a pointer to the start of the structure.
         unsafe { core::slice::from_raw_parts(binary_ptr, size_of::<Self>()) }
     }
+}
 
-    /// Returns the last sub-authority value (Relative Identifier, or RID) of this [`ConstSid`].
-    ///
-    /// The RID is commonly used to identify a specific user, group, or entity within a domain,
-    /// and is the last element in the sub-authority array.
-    ///
-    /// # Examples
-    /// ```rust
-    /// # use win_security_identifier::{ConstSid, SidIdentifierAuthority};
-    /// let sid = ConstSid::<2>::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
-    /// assert_eq!(sid.rid(), 544);
-    /// ```
+impl<const N: usize, const M: usize> PartialEq<ConstSid<M>> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+    [u32; M]: SidLenValid,
+{
     #[inline]
-    #[must_use]
-    pub const fn rid(&self) -> u32 {
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "N is guaranteed to be greater than 0"
-        )]
-        self.sub_authority[N - 1]
+    fn eq(&self, other: &ConstSid<M>) -> bool {
+        self.as_sid() == other.as_sid()
     }
 }
+
+impl<const N: usize> Eq for ConstSid<N> where [u32; N]: SidLenValid {}
 
 impl<const N: usize> PartialEq<Sid> for ConstSid<N>
 where
@@ -217,16 +268,6 @@ where
     }
 }
 
-impl<const N: usize> PartialEq<ConstSid<N>> for Sid
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_sid())
-    }
-}
-
 #[cfg(feature = "alloc")]
 impl<const N: usize> PartialEq<SecurityIdentifier> for ConstSid<N>
 where
@@ -234,27 +275,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &SecurityIdentifier) -> bool {
-        self.eq(other.as_ref())
-    }
-}
-#[cfg(feature = "alloc")]
-impl<const N: usize> PartialEq<ConstSid<N>> for SecurityIdentifier
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.eq(other.as_sid())
-    }
-}
-
-impl<const N: usize> PartialEq<ConstSid<N>> for StackSid
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn eq(&self, other: &ConstSid<N>) -> bool {
-        self.as_sid().eq(other)
+        self == other.as_sid()
     }
 }
 
@@ -268,18 +289,6 @@ where
     }
 }
 
-#[cfg(feature = "alloc")]
-impl<const N: usize> From<ConstSid<N>> for SecurityIdentifier
-where
-    [u32; N]: SidLenValid,
-{
-    #[inline]
-    fn from(value: ConstSid<N>) -> Self {
-        let sid: &Sid = value.as_ref();
-        sid.to_owned()
-    }
-}
-
 impl<const N: usize> TryFrom<&Sid> for ConstSid<N>
 where
     [u32; N]: SidLenValid,
@@ -289,8 +298,17 @@ where
     fn try_from(value: &Sid) -> Result<Self, Self::Error> {
         let revision = value.revision;
         let identifier_authority = value.identifier_authority;
-        let sub_authority: [u32; N] = value.get_sub_authorities().try_into()?;
-        Ok(Self::new(revision, identifier_authority, sub_authority))
+        let sub_authority: [u32; N] = value.sub_authorities().try_into()?;
+        Ok(Self {
+            revision,
+            identifier_authority,
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "N is guaranteed to be lower than 256 because it is lower than 16"
+            )]
+            sub_authority_count: N as u8,
+            sub_authorities: sub_authority,
+        })
     }
 }
 
@@ -302,6 +320,29 @@ where
     type Error = TryFromSliceError;
     #[inline]
     fn try_from(value: SecurityIdentifier) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_sid())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<const N: usize> TryFrom<&SecurityIdentifier> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    type Error = TryFromSliceError;
+    #[inline]
+    fn try_from(value: &SecurityIdentifier) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_sid())
+    }
+}
+
+impl<const N: usize> TryFrom<&StackSid> for ConstSid<N>
+where
+    [u32; N]: SidLenValid,
+{
+    type Error = TryFromSliceError;
+    #[inline]
+    fn try_from(value: &StackSid) -> Result<Self, Self::Error> {
         Self::try_from(value.as_sid())
     }
 }
@@ -325,7 +366,7 @@ where
         self.revision.hash(state);
         self.sub_authority_count.hash(state);
         self.identifier_authority.hash(state);
-        Hash::hash_slice(&self.sub_authority[..], state);
+        Hash::hash_slice(&self.sub_authorities[..], state);
     }
 }
 
@@ -333,7 +374,11 @@ where
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
 mod test {
+    use crate::well_known;
+
     use super::*;
+    use arrayvec::ArrayString;
+    use core::fmt::Write;
     #[cfg(feature = "std")]
     #[test]
     pub fn test_hash() {
@@ -345,7 +390,7 @@ mod test {
         let mut hasher1 = DefaultHasher::default();
         let mut hasher2 = DefaultHasher::default();
         sid.hash(&mut hasher1);
-        sid.as_ref().hash(&mut hasher2);
+        sid.as_sid().hash(&mut hasher2);
         assert_eq!(hasher1.finish(), hasher2.finish());
     }
 
@@ -356,7 +401,7 @@ mod test {
         use crate::SidSizeInfo;
         use core::alloc::Layout;
         let size = SidSizeInfo::from_count(1).unwrap();
-        let layout = size.get_layout();
+        let layout = size.layout();
         assert_eq!(Layout::new::<ConstSid<1>>(), layout);
     }
     #[cfg(feature = "macro")]
@@ -383,28 +428,40 @@ mod test {
     #[cfg(feature = "alloc")]
     #[test]
     fn test_try_from_sid_and_security_identifier() {
-        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [21, 42]);
+        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42]);
         let owned: SecurityIdentifier = sid.into();
-        let sid2 = ConstSid::<2>::try_from(owned.as_ref()).unwrap();
+        let sid2 = ConstSid::<2>::try_from(owned.as_sid()).unwrap();
         assert_eq!(sid, sid2);
     }
 
     #[cfg(feature = "alloc")]
     #[test]
     fn test_invalid_try_from() {
-        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [21, 42, 99]);
+        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 42, 99]);
         let owned: SecurityIdentifier = sid.into();
-        assert!(ConstSid::<2>::try_from(owned.as_ref()).is_err());
+        assert!(ConstSid::<2>::try_from(owned.as_sid()).is_err());
     }
 
     #[test]
     fn test_const_sid_macro() {
-        let sid = ConstSid::new(1, SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
-        assert_eq!(sid.revision, 1);
+        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
+        assert_eq!(sid.revision, Sid::REVISION);
         assert_eq!(
             sid.identifier_authority,
             SidIdentifierAuthority::NT_AUTHORITY
         );
-        assert_eq!(sid.sub_authority, [32, 544]);
+        assert_eq!(sid.sub_authorities, [32, 544]);
+    }
+
+    #[test]
+    #[expect(clippy::use_debug, reason = "test verifies Debug output")]
+    fn test_debug() {
+        let sample_sid = well_known::NULL;
+        let mut output = ArrayString::<32>::new();
+        assert!(
+            write!(&mut output, "{sample_sid:?}").is_ok(),
+            "debug output should fit fixed buffer"
+        );
+        assert_eq!(output.as_str(), "ConstSid(S-1-0-0)",);
     }
 }

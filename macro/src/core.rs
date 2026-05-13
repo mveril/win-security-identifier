@@ -9,10 +9,9 @@ pub fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
         .value()
         .parse()
         .map_err(|e| syn::Error::new_spanned(input, e))?;
-    let revision: u8 = components.revision;
     let authority = components.identifier_authority;
-    let sub_authority = components.sub_authority.as_slice();
-    let len = sub_authority.len();
+    let sub_authorities = components.sub_authorities.as_slice();
+    let len = sub_authorities.len();
     let root = crate_root("win-security-identifier").map_err(|err| {
         syn::Error::new(
             proc_macro2::Span::call_site(),
@@ -22,9 +21,8 @@ pub fn sid_impl(input: &LitStr) -> Result<TokenStream, syn::Error> {
 
     let expanded = quote! {
         #root::ConstSid::<#len>::new(
-            #revision,
             [#(#authority),*].into(),
-            [#(#sub_authority),*]
+            [#(#sub_authorities),*]
         )
     };
     Ok(expanded)
