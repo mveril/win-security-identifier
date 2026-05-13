@@ -30,7 +30,11 @@ Name tests after behavior, for example `parses_nt_authority_builtin_administrato
 
 ## Git Flow & Pull Requests
 
+Agents must follow the human contribution process in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 Git Flow applies to published library crates: `develop` carries versioned crate work, while `main` remains the stable branch. Create `feature/*` and `fix/*` branches from `develop`, and target their pull requests back to `develop`. Use `release/*` branches for versioned release preparation, final validation, and publishing dry runs before merging to `main` and back to `develop`.
+
+Merge pull requests with squash and merge.
 
 Always create pull requests from the repository PR template at [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). Prefer GitHub CLI over hand-written PR descriptions.
 
