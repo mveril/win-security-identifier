@@ -5,7 +5,7 @@ use core::ptr;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
 pub use token_error::TokenError;
 use windows_sys::Win32::{
-    Foundation::GetLastError,
+    Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
     Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser},
     System::Threading::{GetCurrentProcess, OpenProcessToken},
 };
@@ -71,8 +71,13 @@ where
         };
 
         if first_ok != 0 {
-            // Unexpected success: should fail to report size.
-
+            // Unexpected success: a zero-size buffer should only report the required size.
+            use crate::TokenError;
+            return Err(TokenError::GetTokenSizeFailed);
+        }
+        // SAFETY: GetLastError can be called immediately after a failing FFI call.
+        let size_error = unsafe { GetLastError() };
+        if size_error != ERROR_INSUFFICIENT_BUFFER || size == 0 {
             use crate::TokenError;
             return Err(TokenError::GetTokenSizeFailed);
         }
