@@ -32,7 +32,11 @@ Name tests after behavior, for example `parses_nt_authority_builtin_administrato
 
 Git Flow applies to published library crates: `develop` carries versioned crate work, while `main` remains the stable branch. Create `feature/*` and `fix/*` branches from `develop`, and target their pull requests back to `develop`. Use `release/*` branches for versioned release preparation, final validation, and publishing dry runs before merging to `main` and back to `develop`.
 
-Pull requests need a concise description, linked issue when applicable, test results, and Windows validation notes when a change affects Windows-only SID lookup or platform APIs.
+Always create pull requests from the repository PR template at [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). Prefer GitHub CLI over hand-written PR descriptions.
+
+When creating a PR interactively, use `gh pr create --base <base> --head <branch> --template .github/PULL_REQUEST_TEMPLATE.md`, then fill every applicable template section before submitting. When creating a PR non-interactively, first create a temporary PR body file from the template, fill it in, then run `gh pr create --base <base> --head <branch> --title "<title>" --body-file <filled-body-file>`. Do not combine `--template` with `--body` or `--body-file`; GitHub CLI treats those as separate body input modes.
+
+Pull requests need a concise description, linked issue when applicable, test results, and Windows validation notes when a change affects Windows-only SID lookup or platform APIs. Update the template when the expected PR content changes.
 
 ## Commit Guidelines
 
