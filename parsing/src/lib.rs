@@ -140,6 +140,7 @@ fn parse_sub_authority(index: usize, s: &str) -> Result<u32, InvalidSidFormat> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "std")]
     use proptest::prelude::*;
 
     #[test]
@@ -157,6 +158,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "std")]
     proptest! {
         #[test]
         fn rejects_invalid_prefix(prefix in "[^sS-]{0,8}") {
