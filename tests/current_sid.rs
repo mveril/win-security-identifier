@@ -90,8 +90,13 @@ where
         "Domain and name do not match expected value"
     );
     assert_eq!(
-        lookup.sid_type().unwrap(),
+        sid.as_ref().local_sid_type().unwrap().unwrap(),
         SidType::User,
-        "Domain and name do not match expected value"
+        "Local SID type does not match expected value"
+    );
+    assert_eq!(
+        sid.as_ref().local_sid_type().unwrap(),
+        lookup.sid_type(),
+        "Local SID type should match lookup result"
     );
 }
