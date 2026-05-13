@@ -3,7 +3,6 @@ use crate::Sid;
 use super::Error;
 use super::SidLookup;
 use super::domain_and_name::DomainAndName;
-use core::num::NonZeroU32;
 use core::ptr::{null, null_mut};
 use smallvec::SmallVec;
 use std::{ffi::OsString, os::windows::ffi::OsStringExt};
@@ -41,8 +40,8 @@ impl<'a> SidLookupOperation<'a> {
             return None;
         }
         // Safety: `GetLastError` is always safe to call.
-        let err = NonZeroU32::new(unsafe { GetLastError() }).map(Error::from);
-        if err.is_none_or(|e| e != Error::Other(ERROR_INSUFFICIENT_BUFFER)) {
+        let err = Error::from_win32_code(unsafe { GetLastError() });
+        if err != Error::Other(ERROR_INSUFFICIENT_BUFFER) {
             return None;
         }
 
@@ -75,10 +74,7 @@ impl<'a> SidLookupOperation<'a> {
         let result = (result == 0).then(|| {
             // Safety: `GetLastError` is always safe to call.
             let last_error = unsafe { GetLastError() };
-            Error::from(
-                // Safety: `last_error` is non-zero because `GetLastError` never returns 0 after an execution error.
-                unsafe { NonZeroU32::new_unchecked(last_error) },
-            )
+            Error::from_win32_code(last_error)
         });
         match result {
             Some(Error::Other(ERROR_INSUFFICIENT_BUFFER)) => self.process(),
