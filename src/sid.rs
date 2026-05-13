@@ -15,7 +15,7 @@ mod windows;
 pub use windows::sid_lookup;
 
 use crate::ConstSid;
-use crate::InvalidSidFormat;
+use crate::InvalidSidBinaryFormat;
 #[cfg(feature = "alloc")]
 use crate::SecurityIdentifier;
 use crate::StackSid;
@@ -227,7 +227,7 @@ impl Sid {
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [20u32]);
     #[inline]
-    pub const unsafe fn from_bytes(value: &[u8]) -> Result<&Self, InvalidSidFormat> {
+    pub const unsafe fn from_bytes(value: &[u8]) -> Result<&Self, InvalidSidBinaryFormat> {
         if let Err(err) = validate_sid_bytes_unaligned(value) {
             return Err(err);
         }
