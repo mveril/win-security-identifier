@@ -10,6 +10,7 @@ Published library work follows Git Flow:
 
 - Start feature and fix branches from `develop`.
 - Target library pull requests back to `develop`.
+- Merge pull requests with squash and merge.
 - Use `release/*` branches for versioned release preparation and final validation.
 - Keep `main` as the stable branch.
 
