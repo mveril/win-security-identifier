@@ -1,4 +1,5 @@
 use crate::ConstSid;
+use crate::InvalidSidBinaryFormat;
 pub use crate::InvalidSidFormat;
 use crate::Sid;
 use crate::SidIdentifierAuthority;
@@ -151,11 +152,11 @@ impl SecurityIdentifier {
     /// - `bytes`: A type that can be referenced as a byte slice (`AsRef<[u8]>`).
     ///
     /// # Errors
-    /// - [`InvalidSidFormat`] If the byte slice is not a valid SID format.
+    /// - [`InvalidSidBinaryFormat`] If the byte slice is not a valid SID binary format.
     ///
     /// # Examples
     /// ```rust
-    /// # use win_security_identifier::{SecurityIdentifier, InvalidSidFormat};
+    /// # use win_security_identifier::{SecurityIdentifier, InvalidSidBinaryFormat};
     /// // SID: S-1-5-32-544 (Administrators)
     /// let bytes: [u8; 16] = [
     ///     1,    // Revision
@@ -169,7 +170,7 @@ impl SecurityIdentifier {
     /// assert!(sid.unwrap().to_string() == "S-1-5-32-544")
     /// ```
     #[inline]
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidFormat> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidBinaryFormat> {
         validate_sid_bytes_unaligned(bytes)?;
         // SAFETY: All check was done before
         Ok(unsafe { Self::from_bytes_unchecked(bytes) })
@@ -260,7 +261,7 @@ impl SecurityIdentifier {
 }
 
 impl TryFrom<&[u8]> for SecurityIdentifier {
-    type Error = InvalidSidFormat;
+    type Error = InvalidSidBinaryFormat;
 
     #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
