@@ -40,7 +40,7 @@ impl<'a> SidLookupOperation<'a> {
             return None;
         }
         // Safety: `GetLastError` is always safe to call.
-        let err = Error::from_win32_code(unsafe { GetLastError() });
+        let err = Error::from(unsafe { GetLastError() });
         if err != Error::Other(ERROR_INSUFFICIENT_BUFFER) {
             return None;
         }
