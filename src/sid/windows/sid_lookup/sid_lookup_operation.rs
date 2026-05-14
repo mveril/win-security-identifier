@@ -74,7 +74,7 @@ impl<'a> SidLookupOperation<'a> {
         let result = (result == 0).then(|| {
             // Safety: `GetLastError` is always safe to call.
             let last_error = unsafe { GetLastError() };
-            Error::from_win32_code(last_error)
+            Error::from(last_error)
         });
         match result {
             Some(Error::Other(ERROR_INSUFFICIENT_BUFFER)) => self.process(),
