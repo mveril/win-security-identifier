@@ -10,6 +10,7 @@ pub enum SidType {
     User = 1,
 
     /// A SID for a group account.
+    Group = 2,
 
     /// A SID that identifies a domain.
     Domain = 3,
