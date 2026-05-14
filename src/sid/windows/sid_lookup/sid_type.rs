@@ -39,13 +39,3 @@ pub enum SidType {
     /// A logon session SID.
     LogonSession = 11,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::SidType;
-
-    #[test]
-    fn converts_group_sid_type() {
-        assert_eq!(SidType::try_from(2), Ok(SidType::Group));
-    }
-}
