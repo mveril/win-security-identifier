@@ -58,6 +58,7 @@ features = [
   "Win32_Foundation",
   "Win32_Security_Authorization",
   "Win32_Security",
+  "Win32_System_SystemServices",
   "Win32_System_Threading",
 ]
 optional = true
@@ -130,4 +131,3 @@ private_intra_doc_links = "deny"
 invalid_rust_codeblocks = "deny"
 bare_urls = "warn"
 missing_crate_level_docs = "warn"
-
