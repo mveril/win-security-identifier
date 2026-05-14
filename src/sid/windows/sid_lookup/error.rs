@@ -43,3 +43,20 @@ impl From<NonZeroU32> for Error {
         }
     }
 }
+
+impl From<u32> for Error {
+    #[inline]
+    fn from(code: u32) -> Self {
+        NonZeroU32::new(code).map_or(Self::Other(0), Self::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn zero_win32_code_maps_to_other_zero() {
+        assert_eq!(Error::from(0), Error::Other(0));
+    }
+}
