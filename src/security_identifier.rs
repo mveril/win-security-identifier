@@ -580,7 +580,7 @@ pub mod test {
                 let n = subauth.len() as u8;
                 // SAFETY: GetSidLengthRequired is safe for sid Length
                 let required_size = unsafe { GetSidLengthRequired(n) } as usize;
-                let mut buffer = vec![0u8; required_size];
+                let mut buffer = Vec::<u8>::with_capacity(required_size);
                 #[expect(clippy::cast_ptr_alignment, reason = "Unaligned pointer is not an issue for windows API")]
                 let sid_ptr = buffer.as_mut_ptr().cast::<SID>();
                 // SAFETY: InitializeSid is ok with the good buffer.
@@ -592,7 +592,7 @@ pub mod test {
                         n,
                     );
                     prop_assert!(ok != 0, "InitializeSid failed");
-
+                    buffer.set_len(required_size);
                     for (i, &sa) in subauth.iter().enumerate() {
                         let ptr = GetSidSubAuthority(sid_ptr.cast(), u32::try_from(i).unwrap());
                         prop_assert!(!ptr.is_null(), "GetSidSubAuthority null at index {}", i);

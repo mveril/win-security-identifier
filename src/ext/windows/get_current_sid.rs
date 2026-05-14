@@ -1,14 +1,28 @@
 use crate::sid::Sid;
 mod token_error;
-use core::mem::MaybeUninit;
+use core::mem::{MaybeUninit, align_of, size_of};
 use core::ptr;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
 pub use token_error::TokenError;
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
-    Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser},
-    System::Threading::{GetCurrentProcess, OpenProcessToken},
+    Security::{GetTokenInformation, SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER, TokenUser},
+    System::{
+        SystemServices::SE_TOKEN_USER,
+        Threading::{GetCurrentProcess, OpenProcessToken},
+    },
 };
+
+const MAX_TOKEN_USER_BUFFER_SIZE: usize = size_of::<TOKEN_USER>() + SECURITY_MAX_SID_SIZE as usize;
+const _: () = assert!(
+    size_of::<SE_TOKEN_USER>() >= MAX_TOKEN_USER_BUFFER_SIZE,
+    "SE_TOKEN_USER must fit TOKEN_USER plus the largest Windows SID"
+);
+const _: () = assert!(
+    align_of::<SE_TOKEN_USER>() >= align_of::<TOKEN_USER>(),
+    "SE_TOKEN_USER buffer must satisfy TOKEN_USER alignment"
+);
+
 pub trait GetCurrentSid: Sized
 where
     for<'a> &'a Sid: Into<Self>,
@@ -81,33 +95,34 @@ where
         }
 
         // --- Allocate buffer with reported size ------------------------------------
-        let mut buffer = vec![0u8; size as usize];
+        if size as usize > size_of::<SE_TOKEN_USER>() {
+            return Err(TokenError::BufferTooSmall);
+        }
+        // Microsoft documents SE_TOKEN_USER as the stack-allocatable structure for
+        // the largest TokenUser result. Using it directly gives the buffer the same
+        // size and alignment as that C structure, without a heap allocation.
+        let mut buffer = MaybeUninit::<SE_TOKEN_USER>::uninit();
+        let token_user_ptr = buffer.as_mut_ptr().cast::<TOKEN_USER>();
 
-        // SAFETY: Buffer pointer/length are consistent with allocation; size was set by the API.
+        // SAFETY: `buffer` is writable stack storage with TOKEN_USER-compatible
+        // alignment by the const assertion above. `size` was reported by the API
+        // and checked to fit in SE_TOKEN_USER.
         let second_ok = unsafe {
             GetTokenInformation(
                 token_handle.as_raw_handle(),
                 TokenUser,
-                buffer.as_mut_ptr().cast(),
+                token_user_ptr.cast(),
                 size,
                 &raw mut size,
             )
         };
-
         if second_ok == 0 {
             // SAFETY: GetLastError can be called immediately after a failing FFI call.
             let err = unsafe { GetLastError() };
             return Err(TokenError::GetTokenInfoFailed(err));
         }
-        #[expect(
-            clippy::cast_ptr_alignment,
-            reason = "read_unaligned handles unaligned access"
-        )]
-        let token_user_ptr = buffer.as_ptr().cast::<TOKEN_USER>();
-        // SAFETY: TOKEN_USER is a plain data struct and can be read from a byte buffer.
-        let sid_ptr = unsafe { ptr::addr_of!((*token_user_ptr).User.Sid) };
         // SAFETY: TOKEN_USER contains a PSID which is a pointer to a valid SID.
-        let raw_sid: *mut core::ffi::c_void = unsafe { ptr::read_unaligned(sid_ptr) };
+        let raw_sid = unsafe { (*token_user_ptr).User.Sid };
         // SAFETY: get the user Sid from the raw pointer structure.
         let sid = unsafe { Sid::from_raw(raw_sid) };
         Ok(sid.into())
@@ -119,4 +134,42 @@ where
     T: Sized,
     for<'a> &'a Sid: Into<T>,
 {
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_TOKEN_USER_BUFFER_SIZE, SE_TOKEN_USER, TOKEN_USER};
+    use core::mem::{align_of, size_of};
+    use windows_sys::Win32::Security::{PSID, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES};
+
+    #[test]
+    fn token_user_buffer_layout_matches_windows_sys() {
+        let token_user_buffer_size = size_of::<TOKEN_USER>() + SECURITY_MAX_SID_SIZE as usize;
+
+        assert_eq!(
+            MAX_TOKEN_USER_BUFFER_SIZE, token_user_buffer_size,
+            "production TOKEN_USER buffer calculation must match windows-sys layout"
+        );
+        assert!(
+            size_of::<SE_TOKEN_USER>() >= token_user_buffer_size,
+            "SE_TOKEN_USER has {} bytes, needs {token_user_buffer_size}",
+            size_of::<SE_TOKEN_USER>()
+        );
+        assert!(
+            align_of::<SE_TOKEN_USER>() >= align_of::<TOKEN_USER>(),
+            "SE_TOKEN_USER alignment ({}) must cover TOKEN_USER alignment ({})",
+            align_of::<SE_TOKEN_USER>(),
+            align_of::<TOKEN_USER>()
+        );
+        assert_eq!(
+            align_of::<TOKEN_USER>(),
+            align_of::<SID_AND_ATTRIBUTES>(),
+            "TOKEN_USER is a wrapper around SID_AND_ATTRIBUTES"
+        );
+        assert_eq!(
+            align_of::<SID_AND_ATTRIBUTES>(),
+            align_of::<PSID>(),
+            "SID_AND_ATTRIBUTES alignment is driven by its PSID member"
+        );
+    }
 }
