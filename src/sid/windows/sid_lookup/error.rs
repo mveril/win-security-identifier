@@ -44,9 +44,9 @@ impl From<NonZeroU32> for Error {
     }
 }
 
-impl Error {
+impl From<u32> for Error {
     #[inline]
-    pub(crate) fn from_win32_code(code: u32) -> Self {
+    fn from(code: u32) -> Self {
         NonZeroU32::new(code).map_or(Self::Other(0), Self::from)
     }
 }
@@ -57,6 +57,6 @@ mod tests {
 
     #[test]
     fn zero_win32_code_maps_to_other_zero() {
-        assert_eq!(Error::from_win32_code(0), Error::Other(0));
+        assert_eq!(Error::from(0), Error::Other(0));
     }
 }
