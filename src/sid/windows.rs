@@ -104,9 +104,7 @@ impl Sid {
     pub fn local_sid_type(
         &self,
     ) -> Option<Result<SidType, num_enum::TryFromPrimitiveError<SidType>>> {
-        self.lookup_impl(None)
-            .and_then(Result::ok)
-            .map(|lookup| lookup.sid_type())
+        SidLookupOperation::new(self, None).and_then(SidLookupOperation::process_type)
     }
 
     /// Returns the `SidType` for this SID on a remote machine (if lookup succeeds).
@@ -117,9 +115,7 @@ impl Sid {
         machine_name: S,
     ) -> Option<Result<SidType, num_enum::TryFromPrimitiveError<SidType>>> {
         Self::osstr_to_wide(machine_name.as_ref()).and_then(|w| {
-            self.lookup_impl(Some(&w))
-                .and_then(Result::ok)
-                .map(|lookup| lookup.sid_type())
+            SidLookupOperation::new(self, Some(&w)).and_then(SidLookupOperation::process_type)
         })
     }
 }
