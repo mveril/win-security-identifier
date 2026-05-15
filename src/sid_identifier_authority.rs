@@ -37,6 +37,12 @@ impl SidIdentifierAuthority {
     /// (e.g. Local System, Administrators, Users, etc.).
     pub const NT_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 5]);
 
+    /// App Package Authority (S-1-15)
+    pub const APP_PACKAGE_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 15]);
+
+    /// Mandatory Label Authority (S-1-16)
+    pub const MANDATORY_LABEL_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 16]);
+
     /// Resource Manager Authority (S-1-9)
     ///
     /// Used by Windows resource managers (e.g. for claims-based access control).

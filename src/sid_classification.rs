@@ -50,12 +50,12 @@ fn classify(authority: SidIdentifierAuthority, sub_authorities: &[u32]) -> SidCl
         SidIdentifierAuthority::SECURITY_LOCAL_AUTHORITY => classify_local(sub_authorities),
         SidIdentifierAuthority::SECURITY_CREATOR_AUTHORITY => classify_creator(sub_authorities),
         SidIdentifierAuthority::NT_AUTHORITY => classify_nt_authority(sub_authorities),
-        SidIdentifierAuthority {
-            value: [0, 0, 0, 0, 0, 15],
-        } => classify_package_authority(sub_authorities),
-        SidIdentifierAuthority {
-            value: [0, 0, 0, 0, 0, 16],
-        } if !sub_authorities.is_empty() => SidClassification::IntegrityLevel,
+        SidIdentifierAuthority::APP_PACKAGE_AUTHORITY => {
+            classify_package_authority(sub_authorities)
+        }
+        SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY if !sub_authorities.is_empty() => {
+            SidClassification::IntegrityLevel
+        }
         _ => SidClassification::Unknown,
     }
 }
@@ -113,11 +113,6 @@ fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
 mod tests {
     use super::*;
     use crate::{ConstSid, well_known};
-
-    const PACKAGE_AUTHORITY: SidIdentifierAuthority =
-        SidIdentifierAuthority::new([0, 0, 0, 0, 0, 15]);
-    const MANDATORY_LABEL_AUTHORITY: SidIdentifierAuthority =
-        SidIdentifierAuthority::new([0, 0, 0, 0, 0, 16]);
 
     fn assert_classifies(
         authority: SidIdentifierAuthority,
@@ -223,9 +218,9 @@ mod tests {
 
     #[test]
     fn classifies_integrity_and_package_authorities() {
-        let integrity = ConstSid::new(MANDATORY_LABEL_AUTHORITY, [8192]);
-        let app_container = ConstSid::new(PACKAGE_AUTHORITY, [2, 1]);
-        let capability = ConstSid::new(PACKAGE_AUTHORITY, [3, 1]);
+        let integrity = ConstSid::new(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, [8192]);
+        let app_container = ConstSid::new(SidIdentifierAuthority::APP_PACKAGE_AUTHORITY, [2, 1]);
+        let capability = ConstSid::new(SidIdentifierAuthority::APP_PACKAGE_AUTHORITY, [3, 1]);
 
         assert_eq!(
             integrity.as_sid().classification(),
@@ -256,20 +251,28 @@ mod tests {
         ];
 
         for (sub_authorities, expected) in cases {
-            assert_classifies(PACKAGE_AUTHORITY, sub_authorities, expected);
+            assert_classifies(
+                SidIdentifierAuthority::APP_PACKAGE_AUTHORITY,
+                sub_authorities,
+                expected,
+            );
         }
     }
 
     #[test]
     fn classifies_mandatory_label_authority_boundaries() {
-        assert_classifies(MANDATORY_LABEL_AUTHORITY, &[], SidClassification::Unknown);
         assert_classifies(
-            MANDATORY_LABEL_AUTHORITY,
+            SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY,
+            &[],
+            SidClassification::Unknown,
+        );
+        assert_classifies(
+            SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY,
             &[8192],
             SidClassification::IntegrityLevel,
         );
         assert_classifies(
-            MANDATORY_LABEL_AUTHORITY,
+            SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY,
             &[8192, 1],
             SidClassification::IntegrityLevel,
         );
