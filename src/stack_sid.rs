@@ -9,8 +9,8 @@ use core::hash::Hash;
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
-use crate::utils::{self, sub_authority_size_guard, validate_sid_bytes_unaligned};
-use crate::{ConstSid, InvalidSidBinaryFormat, Sid, SidIdentifierAuthority};
+use crate::utils::{self, validate_sid_bytes_unaligned};
+use crate::{ConstSid, InvalidSidBinaryFormat, InvalidSidParts, Sid, SidIdentifierAuthority};
 use core::fmt::{self, Display};
 use core::mem::{MaybeUninit, size_of, size_of_val};
 use core::ptr;
@@ -46,18 +46,20 @@ impl StackSid {
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
-    #[must_use]
+    /// Creates a new `StackSid` from parts, returning a typed error on invalid input.
+    ///
+    /// # Errors
+    /// Returns [`InvalidSidParts`] if the sub-authority count is outside the valid Windows range.
     #[inline]
     pub const fn try_new(
         identifier_authority: SidIdentifierAuthority,
         sub_authorities: &[u32],
-    ) -> Option<Self> {
-        if sub_authority_size_guard(sub_authorities.len()) {
-            // Safety: We checked the subauthority length to be in 1..=15.
-            unsafe { Some(Self::new_unchecked(identifier_authority, sub_authorities)) }
-        } else {
-            None
+    ) -> Result<Self, InvalidSidParts> {
+        if let Err(err) = InvalidSidParts::validate_len(sub_authorities.len()) {
+            return Err(err);
         }
+        // Safety: We checked the subauthority length to be in 1..=15.
+        Ok(unsafe { Self::new_unchecked(identifier_authority, sub_authorities) })
     }
 
     /// Creates a new `StackSid` from parts **without validation**.

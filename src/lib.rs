@@ -115,6 +115,7 @@ pub use security_identifier::SecurityIdentifier;
 pub use sid::sid_lookup;
 mod ext;
 mod invalid_sid_binary_format;
+mod invalid_sid_parts;
 
 #[cfg(not(has_ptr_metadata))]
 pub(crate) mod polyfills_ptr;
@@ -149,6 +150,7 @@ pub(crate) mod internal;
 /// See [`ConstSid`] for invariants and examples.
 pub use const_sid::ConstSid;
 pub use invalid_sid_binary_format::InvalidSidBinaryFormat;
+pub use invalid_sid_parts::InvalidSidParts;
 
 pub use parsing::InvalidSidFormat;
 
