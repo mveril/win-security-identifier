@@ -37,15 +37,20 @@ const _: () = assert!(
 /// wrappers may also implement this trait when their implementation ensures the
 /// returned pointer refers to storage that outlives the returned value.
 ///
-/// Raw pointers do not implement this trait, because converting the temporary
-/// token SID directly into `*const Sid` would return a dangling pointer:
+/// Raw pointers do not implement this trait, because returning the temporary
+/// token SID pointer directly would create a dangling pointer.
 ///
-/// ```compile_fail
+/// # Examples
+///
+/// ```
 /// # #[cfg(windows)]
 /// # {
-/// use win_security_identifier::{GetCurrentSid, Sid};
+/// use win_security_identifier::{CloneSidFromRaw, SecurityIdentifier, well_known};
 ///
-/// let _ = <*const Sid as GetCurrentSid>::get_current_user_sid();
+/// let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+/// let cloned = unsafe { SecurityIdentifier::clone_sid_from_raw(sid.as_raw()) };
+///
+/// assert_eq!(cloned.as_sid(), sid);
 /// # }
 /// ```
 pub unsafe trait CloneSidFromRaw: Sized {
