@@ -139,7 +139,7 @@ pub const BUILTIN_PERFORMANCE_LOG_USERS: ConstSid<2> =
 pub const BUILTIN_DISTRIBUTED_COM_USERS: ConstSid<2> =
     ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 562]);
 
-/// BUILTIN\IIS_IUSRS (S-1-5-32-568)
+/// `BUILTIN\IIS_IUSRS` (S-1-5-32-568)
 pub const BUILTIN_IIS_IUSRS: ConstSid<2> =
     ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 568]);
 
