@@ -5,14 +5,16 @@
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 #![allow(clippy::std_instead_of_core)]
 
+use core::ptr;
 use serde::Deserialize;
 use std::{
     fmt::Debug,
     process::{Command, Stdio},
 };
 use win_security_identifier::{
-    GetCurrentSid, SecurityIdentifier, Sid, StackSid,
+    CloneSidFromRaw, GetCurrentSid, SecurityIdentifier, Sid, StackSid,
     sid_lookup::{DomainAndName, SidType},
+    well_known,
 };
 
 #[derive(Debug, Deserialize)]
@@ -37,18 +39,49 @@ fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
 }
 
 #[test]
-fn current_user_sid_and_account_heap() {
+fn security_identifier_get_current_user_sid_and_account() {
     current_user_sid_and_account::<SecurityIdentifier>();
 }
+
 #[test]
-fn current_user_sid_and_account_stack() {
+fn stack_sid_get_current_user_sid_and_account() {
     current_user_sid_and_account::<StackSid>();
+}
+
+#[test]
+fn security_identifier_clone_sid_from_raw_clones_sid() {
+    clone_sid_from_raw_clones_sid::<SecurityIdentifier>();
+}
+
+#[test]
+fn stack_sid_clone_sid_from_raw_clones_sid() {
+    clone_sid_from_raw_clones_sid::<StackSid>();
+}
+
+fn clone_sid_from_raw_clones_sid<T>()
+where
+    T: CloneSidFromRaw + AsRef<Sid>,
+{
+    let source = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+
+    // SAFETY: `source.as_raw()` points to the well-known SID for the duration
+    // of this call.
+    let current = unsafe { T::clone_sid_from_raw(source.as_raw()) };
+
+    assert_eq!(
+        current.as_ref(),
+        source,
+        "cloned SID must preserve the source value"
+    );
+    assert!(
+        !ptr::addr_eq(current.as_ref(), source),
+        "cloned SID must not borrow the source buffer"
+    );
 }
 
 fn current_user_sid_and_account<T>()
 where
-    T: Sized + AsRef<Sid> + PartialEq<StackSid> + Debug,
-    for<'a> &'a Sid: Into<T>,
+    T: CloneSidFromRaw + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
     const PS_SCRIPT: &str = include_str!("assets/get_sid_account.ps1");
 
