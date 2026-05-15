@@ -1,13 +1,13 @@
 use crate::ConstSid;
 use crate::InvalidSidBinaryFormat;
 pub use crate::InvalidSidFormat;
+use crate::InvalidSidParts;
 use crate::Sid;
 use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
 use crate::StackSid;
 use crate::internal::SidLenValid;
 use crate::utils;
-use crate::utils::sub_authority_size_guard;
 use crate::utils::validate_sid_bytes_unaligned;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{borrow::ToOwned, boxed::Box};
@@ -59,13 +59,14 @@ impl Debug for SecurityIdentifier {
 }
 
 impl SecurityIdentifier {
-    /// Creates a new `SecurityIdentifier` from parts, validating input.
-    ///
-    /// Returns `None` if `sub_authorities` length is out of bounds (not in 1..=15).
+    /// Creates a new `SecurityIdentifier` from parts, returning a typed error on invalid input.
     ///
     /// # Parameters
     /// - `identifier_authority`: High-level authority (e.g. `NT_AUTHORITY`).
     /// - `sub_authorities`: Slice of sub-authorities (1..=15 elements).
+    ///
+    /// # Errors
+    /// Returns [`InvalidSidParts`] if the sub-authority count is outside the valid Windows range.
     ///
     /// # Examples
     /// ```rust
@@ -78,16 +79,15 @@ impl SecurityIdentifier {
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
-    #[must_use]
     #[inline]
     pub fn try_new<I: Into<SidIdentifierAuthority>, S: AsRef<[u32]>>(
         identifier_authority: I,
         sub_authorities: S,
-    ) -> Option<Self> {
+    ) -> Result<Self, InvalidSidParts> {
         let sub_authorities = sub_authorities.as_ref();
         // SAFETY: sub_authority_count is correctly validated by guard.
-        sub_authority_size_guard(sub_authorities.len())
-            .then_some(unsafe { Self::new_unchecked(identifier_authority, sub_authorities) })
+        InvalidSidParts::validate_len(sub_authorities.len())?;
+        Ok(unsafe { Self::new_unchecked(identifier_authority, sub_authorities) })
     }
 
     /// Creates a new `SecurityIdentifier` from parts **without validation**.
