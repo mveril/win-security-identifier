@@ -45,7 +45,10 @@ impl Sid {
     }
 }
 
-fn classify(authority: SidIdentifierAuthority, sub_authorities: &[u32]) -> SidClassification {
+pub(crate) fn classify(
+    authority: SidIdentifierAuthority,
+    sub_authorities: &[u32],
+) -> SidClassification {
     match authority {
         SidIdentifierAuthority::NULL_AUTHORITY => classify_null(sub_authorities),
         SidIdentifierAuthority::SECURITY_WORLD_AUTHORITY => classify_world(sub_authorities),
@@ -129,24 +132,15 @@ mod tests {
 
     #[test]
     fn classifies_basic_well_known_sids() {
+        assert_eq!(well_known::NULL.classification(), SidClassification::Null);
+        assert_eq!(well_known::WORLD.classification(), SidClassification::World);
+        assert_eq!(well_known::LOCAL.classification(), SidClassification::Local);
         assert_eq!(
-            well_known::NULL.as_sid().classification(),
-            SidClassification::Null
-        );
-        assert_eq!(
-            well_known::WORLD.as_sid().classification(),
-            SidClassification::World
-        );
-        assert_eq!(
-            well_known::LOCAL.as_sid().classification(),
-            SidClassification::Local
-        );
-        assert_eq!(
-            well_known::CREATOR_OWNER.as_sid().classification(),
+            well_known::CREATOR_OWNER.classification(),
             SidClassification::CreatorOwner
         );
         assert_eq!(
-            well_known::CREATOR_GROUP.as_sid().classification(),
+            well_known::CREATOR_GROUP.classification(),
             SidClassification::CreatorGroup
         );
     }
@@ -217,11 +211,11 @@ mod tests {
     #[test]
     fn classifies_nt_authority_examples_from_well_known_sids() {
         assert_eq!(
-            well_known::BUILTIN_ADMINISTRATORS.as_sid().classification(),
+            well_known::BUILTIN_ADMINISTRATORS.classification(),
             SidClassification::BuiltinAlias
         );
         assert_eq!(
-            well_known::LOCAL_SYSTEM.as_sid().classification(),
+            well_known::LOCAL_SYSTEM.classification(),
             SidClassification::NtAuthority
         );
     }
