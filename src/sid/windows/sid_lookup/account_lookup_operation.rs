@@ -3,6 +3,7 @@ use crate::SecurityIdentifier;
 use super::Error;
 use super::SidType;
 use super::domain_and_name::DomainAndName;
+use crate::CloneSidFromRaw;
 use core::ptr::{null, null_mut};
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 use smallvec::SmallVec;
@@ -10,25 +11,22 @@ use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::OsStringExt;
 use widestring::U16CString;
 use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
-use windows_sys::Win32::{
-    Foundation::GetLastError,
-    Security::LookupAccountNameW,
-};
+use windows_sys::Win32::{Foundation::GetLastError, Security::LookupAccountNameW};
 
 type LookupBuffer = SmallVec<[u16; 256]>;
 type SidBuffer = SmallVec<[u8; 128]>;
 
 /// Result of a Windows account-name lookup.
-pub struct AccountLookup {
+pub struct AccountLookup<T: CloneSidFromRaw> {
     /// The SID associated with the account name.
-    pub sid: SecurityIdentifier,
+    pub sid: T,
     /// The canonical domain and account name returned by Windows.
     pub domain_name: DomainAndName,
     /// The raw SID type value.
     pub sid_type_raw: i32,
 }
 
-impl AccountLookup {
+impl<T: CloneSidFromRaw> AccountLookup<T> {
     /// Get the SID type as an enum.
     /// # Errors
     /// Return a [`TryFromPrimitiveError<SidType>`] error if the raw SID type value is unknown.
@@ -83,7 +81,7 @@ impl<'a> AccountLookupOperation<'a> {
         })
     }
 
-    fn process(mut self) -> Result<AccountLookup, Error> {
+    fn process<T: CloneSidFromRaw>(mut self) -> Result<AccountLookup<T>, Error> {
         let mut sid_buffer = SidBuffer::with_capacity(self.sid_len as usize);
         let mut domain_buffer = LookupBuffer::with_capacity(self.domain_len as usize);
         let machine_name_ptr = self.machine_name.map_or(null(), |s| s.as_ptr());
@@ -116,11 +114,10 @@ impl<'a> AccountLookupOperation<'a> {
             domain_buffer.set_len(self.domain_len as usize);
         }
 
-        let sid_ref = unsafe {
+        let sid = unsafe {
             // SAFETY: LookupAccountNameW wrote a valid SID on success.
-            crate::Sid::from_raw(sid_buffer.as_ptr().cast::<core::ffi::c_void>().cast_mut())
+            T::clone_sid_from_raw(sid_buffer.as_ptr().cast::<core::ffi::c_void>().cast_mut())
         };
-        let sid = SecurityIdentifier::from(sid_ref);
         let domain = OsString::from_wide(domain_buffer.as_slice());
         let name = account_name_component(self.account_name);
 
@@ -153,9 +150,9 @@ impl SecurityIdentifier {
     /// Performs a lookup of an account name on the local machine.
     #[inline]
     #[must_use]
-    pub fn lookup_local_account_name<S: AsRef<OsStr>>(
+    pub fn lookup_local_account_name<T: CloneSidFromRaw, S: AsRef<OsStr>>(
         account_name: S,
-    ) -> Option<Result<AccountLookup, Error>> {
+    ) -> Option<Result<AccountLookup<T>, Error>> {
         osstr_to_wide(account_name.as_ref()).and_then(|account_name| {
             AccountLookupOperation::new(&account_name, None).map(AccountLookupOperation::process)
         })
@@ -164,10 +161,10 @@ impl SecurityIdentifier {
     /// Performs a lookup of an account name on a remote machine.
     #[inline]
     #[must_use]
-    pub fn lookup_remote_account_name<M: AsRef<OsStr>, S: AsRef<OsStr>>(
+    pub fn lookup_remote_account_name<T: CloneSidFromRaw, M: AsRef<OsStr>, S: AsRef<OsStr>>(
         machine_name: M,
         account_name: S,
-    ) -> Option<Result<AccountLookup, Error>> {
+    ) -> Option<Result<AccountLookup<T>, Error>> {
         osstr_to_wide(machine_name.as_ref()).and_then(|machine_name| {
             osstr_to_wide(account_name.as_ref()).and_then(|account_name| {
                 AccountLookupOperation::new(&account_name, Some(&machine_name))
