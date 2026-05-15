@@ -1,7 +1,8 @@
-use crate::{Sid, SidClassification, SidIdentifierAuthority, StackSid};
+use crate::{Sid, SidClassification, StackSid};
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::ops::Deref;
+use core::ptr;
 
 /// Borrowed view over an account SID (`S-1-5-21-*-*-*-RID`).
 #[repr(transparent)]
@@ -63,14 +64,14 @@ fn has_account_rid_shape(sid: &Sid) -> bool {
     matches!(sid.sub_authorities(), [21, _, _, _, _])
 }
 
-impl<'a> TryFrom<&'a Sid> for &'a AccountSid {
+impl TryFrom<&'a Sid> for &'a AccountSid {
     type Error = NotAccountSid;
 
     #[inline]
     fn try_from(value: &'a Sid) -> Result<Self, Self::Error> {
-        if AccountSid::is_account_sid(value) {
+        if AccountSid::is_account_sid(sid) {
             // SAFETY: AccountSid is repr(transparent) over Sid and the shape was validated above.
-            Ok(unsafe { &*(core::ptr::from_ref(value) as *const Sid as *const AccountSid) })
+            Ok(unsafe { &*(ptr::from_ref(value) as *const AccountSid) })
         } else {
             Err(NotAccountSid)
         }
