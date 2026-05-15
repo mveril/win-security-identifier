@@ -5,13 +5,15 @@
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 #![allow(clippy::std_instead_of_core)]
 
+use core::ptr;
+use proptest::prelude::*;
 use serde::Deserialize;
 use std::{
     fmt::Debug,
     process::{Command, Stdio},
 };
 use win_security_identifier::{
-    GetCurrentSid, SecurityIdentifier, Sid, StackSid,
+    CloneSidFromRaw, GetCurrentSid, SecurityIdentifier, Sid, SidIdentifierAuthority, StackSid,
     sid_lookup::{DomainAndName, SidType},
 };
 
@@ -37,18 +39,62 @@ fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
 }
 
 #[test]
-fn current_user_sid_and_account_heap() {
+fn security_identifier_get_current_user_sid_and_account() {
     current_user_sid_and_account::<SecurityIdentifier>();
 }
+
 #[test]
-fn current_user_sid_and_account_stack() {
+fn stack_sid_get_current_user_sid_and_account() {
     current_user_sid_and_account::<StackSid>();
+}
+
+proptest! {
+    #[test]
+    fn clone_sid_from_raw_clones_sid(sid in arb_stack_sid()) {
+        clone_sid_from_raw_clones_sid_as::<SecurityIdentifier>(&sid);
+        clone_sid_from_raw_clones_sid_as::<StackSid>(&sid);
+        clone_sid_from_raw_clones_sid_as::<Box<Sid>>(&sid);
+    }
+}
+
+fn clone_sid_from_raw_clones_sid_as<T>(source: &StackSid)
+where
+    T: CloneSidFromRaw + AsRef<Sid>,
+{
+    let source = source.as_sid();
+
+    // SAFETY: `source.as_raw()` points to `source`, which remains alive for the
+    // duration of this call.
+    let current = unsafe { T::clone_sid_from_raw(source.as_raw()) };
+
+    assert_eq!(
+        current.as_ref(),
+        source,
+        "cloned SID must preserve the source value"
+    );
+    assert!(
+        !ptr::addr_eq(current.as_ref(), source),
+        "cloned SID must not borrow the source buffer"
+    );
+}
+
+fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
+    (
+        any::<[u8; 6]>(),
+        proptest::collection::vec(any::<u32>(), 1..=15),
+    )
+        .prop_map(|(identifier_authority, sub_authorities)| {
+            StackSid::try_new(
+                SidIdentifierAuthority::new(identifier_authority),
+                &sub_authorities,
+            )
+            .expect("generated SID parts must be valid")
+        })
 }
 
 fn current_user_sid_and_account<T>()
 where
-    T: Sized + AsRef<Sid> + PartialEq<StackSid> + Debug,
-    for<'a> &'a Sid: Into<T>,
+    T: CloneSidFromRaw + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
     const PS_SCRIPT: &str = include_str!("assets/get_sid_account.ps1");
 

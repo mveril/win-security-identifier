@@ -108,7 +108,7 @@ mod sid;
 #[cfg(doc)]
 use core::alloc::Layout;
 #[cfg(all(windows, feature = "std"))]
-pub use ext::{GetCurrentSid, TokenError};
+pub use ext::{CloneSidFromRaw, GetCurrentSid, TokenError};
 #[cfg(feature = "alloc")]
 pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]

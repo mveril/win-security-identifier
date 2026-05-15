@@ -1,5 +1,5 @@
-use crate::sid::Sid;
 mod token_error;
+use super::CloneSidFromRaw;
 use core::mem::{MaybeUninit, align_of, size_of};
 use core::ptr;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
@@ -23,10 +23,7 @@ const _: () = assert!(
     "SE_TOKEN_USER buffer must satisfy TOKEN_USER alignment"
 );
 
-pub trait GetCurrentSid: Sized
-where
-    for<'a> &'a Sid: Into<Self>,
-{
+pub trait GetCurrentSid: CloneSidFromRaw {
     /// Retrieves the current user's SID from the process token (Windows only).
     ///
     /// # Errors
@@ -121,20 +118,15 @@ where
             let err = unsafe { GetLastError() };
             return Err(TokenError::GetTokenInfoFailed(err));
         }
-        // SAFETY: TOKEN_USER contains a PSID which is a pointer to a valid SID.
+        // SAFETY: TOKEN_USER contains a PSID which is valid for this call.
         let raw_sid = unsafe { (*token_user_ptr).User.Sid };
-        // SAFETY: get the user Sid from the raw pointer structure.
-        let sid = unsafe { Sid::from_raw(raw_sid) };
-        Ok(sid.into())
+        // SAFETY: `raw_sid` points into `buffer`, which stays alive until after
+        // `clone_sid_from_raw` returns.
+        Ok(unsafe { Self::clone_sid_from_raw(raw_sid) })
     }
 }
 
-impl<T> GetCurrentSid for T
-where
-    T: Sized,
-    for<'a> &'a Sid: Into<T>,
-{
-}
+impl<T> GetCurrentSid for T where T: CloneSidFromRaw {}
 
 #[cfg(test)]
 mod tests {
