@@ -12,7 +12,7 @@ use widestring::U16CString;
 use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
 use windows_sys::Win32::{
     Foundation::GetLastError,
-    Security::{LookupAccountNameW, PSID},
+    Security::LookupAccountNameW,
 };
 
 type LookupBuffer = SmallVec<[u16; 256]>;
@@ -118,7 +118,7 @@ impl<'a> AccountLookupOperation<'a> {
 
         let sid_ref = unsafe {
             // SAFETY: LookupAccountNameW wrote a valid SID on success.
-            crate::Sid::from_raw(sid_buffer.as_ptr().cast::<core::ffi::c_void>() as PSID)
+            crate::Sid::from_raw(sid_buffer.as_ptr().cast::<core::ffi::c_void>().cast_mut())
         };
         let sid = SecurityIdentifier::from(sid_ref);
         let domain = OsString::from_wide(domain_buffer.as_slice());
