@@ -146,6 +146,17 @@ impl StackSid {
         }
 
         to self.as_sid_mut() {
+            /// Returns a mutable slice of sub-authorities.
+            ///
+            /// This allows changing existing sub-authority values without changing the SID length.
+            #[must_use]
+            #[inline]
+            pub const fn sub_authorities_mut(&mut self) -> &mut [u32];
+
+            /// Sets the RID (last sub-authority) without changing the SID length.
+            #[inline]
+            pub const fn set_rid(&mut self, rid: u32);
+
             /// Returns a `&mut [u8]` view over the **currently valid** minimal binary representation.
             ///
             /// This can be used for low-level, in-place updates when you know exactly what you are doing.

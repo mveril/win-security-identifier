@@ -175,6 +175,22 @@ impl Sid {
         }
     }
 
+    /// Returns a mutable slice of sub-authorities.
+    ///
+    /// This allows changing existing sub-authority values without changing the SID length.
+    #[must_use]
+    #[inline]
+    pub const fn sub_authorities_mut(&mut self) -> &mut [u32] {
+        // Safety: self is valid and fully initialized, and the returned length
+        // matches the fixed sub-authority count stored in the SID header.
+        unsafe {
+            slice::from_raw_parts_mut(
+                self.sub_authorities.as_mut_ptr(),
+                self.sub_authority_count as usize,
+            )
+        }
+    }
+
     /// Computes the minimal `Layout` (size + align) needed for **this** instance
     /// given its current `sub_authority_count`.
     ///
@@ -208,6 +224,19 @@ impl Sid {
     #[inline]
     pub const fn rid(&self) -> u32 {
         self.sub_authorities()[self.sub_authority_count as usize - 1]
+    }
+
+    /// Sets the RID (last sub-authority) without changing the SID length.
+    #[inline]
+    pub const fn set_rid(&mut self, rid: u32) {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "sub_authority_count is guaranteed to be greater than 0"
+        )]
+        {
+            let rid_index = self.sub_authority_count as usize - 1;
+            self.sub_authorities_mut()[rid_index] = rid;
+        }
     }
 
     /// Attempts to construct a `&Sid` from a raw byte slice.
@@ -371,6 +400,13 @@ mod tests {
         fn sid_sub_authorities_len(sid in arb_security_identifier()) {
             let subs = sid.sub_authorities();
             prop_assert_eq!(subs.len(), sid.sub_authority_count as usize);
+        }
+
+        #[test]
+        fn sid_set_rid_updates_last_sub_authority(mut sid in arb_security_identifier(), rid in any::<u32>()) {
+            sid.set_rid(rid);
+            prop_assert_eq!(sid.rid(), rid);
+            prop_assert_eq!(sid.sub_authorities().last(), Some(&rid));
         }
     }
 
