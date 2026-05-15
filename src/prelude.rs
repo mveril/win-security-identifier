@@ -10,4 +10,4 @@ pub use crate::SecurityIdentifier;
 #[cfg(feature = "macro")]
 pub use crate::sid;
 #[cfg(all(windows, feature = "std"))]
-pub use crate::{CloneSidFromRaw, GetCurrentSid, LookupAccountName, TokenError};
+pub use crate::{GetCurrentSid, LookupAccountName, OwnedSid, TokenError};

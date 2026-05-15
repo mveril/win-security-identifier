@@ -48,7 +48,7 @@ fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
 #[case::stack_sid(PhantomData::<StackSid>)]
 fn current_user_sid_and_account<T>(#[case] type_marker: PhantomData<T>)
 where
-    T: CloneSidFromRaw + LookupAccountName + AsRef<Sid> + PartialEq<StackSid> + Debug,
+    T: OwnedSid + LookupAccountName + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
     let _ = type_marker;
     let user = current_user_from_powershell();
@@ -129,7 +129,7 @@ fn account_lookup_matches_current_sid<T>(
     sid: &Sid,
 ) -> OptionalLookup<AccountNameLookup>
 where
-    T: CloneSidFromRaw + LookupAccountName + AsRef<Sid>,
+    T: OwnedSid + LookupAccountName + AsRef<Sid>,
 {
     T::lookup_local_account_name(account.to_string())
         .map(|lookup| lookup.map(|lookup| account_lookup_parts(lookup, sid)).ok())
@@ -137,7 +137,7 @@ where
 
 fn account_lookup_parts<T>(lookup: AccountLookup<T>, sid: &Sid) -> AccountNameLookup
 where
-    T: CloneSidFromRaw + AsRef<Sid>,
+    T: OwnedSid + AsRef<Sid>,
 {
     let sid_matches = lookup.sid.as_ref() == sid;
     let sid_type = lookup.sid_type().ok();
