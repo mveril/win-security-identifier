@@ -1,4 +1,4 @@
-use crate::{Sid, SidIdentifierAuthority, StackSid};
+use crate::{Sid, SidClassification, SidIdentifierAuthority, StackSid};
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::ops::Deref;
@@ -54,9 +54,13 @@ impl AccountSid {
     #[must_use]
     #[inline]
     pub(crate) fn is_account_sid(sid: &Sid) -> bool {
-        sid.identifier_authority == SidIdentifierAuthority::NT_AUTHORITY
-            && matches!(sid.sub_authorities(), [21, _, _, _, _])
+        sid.classification() == SidClassification::AccountDomain && has_account_rid_shape(sid)
     }
+}
+
+#[inline]
+fn has_account_rid_shape(sid: &Sid) -> bool {
+    matches!(sid.sub_authorities(), [21, _, _, _, _])
 }
 
 impl<'a> TryFrom<&'a Sid> for &'a AccountSid {
