@@ -35,6 +35,7 @@ pub unsafe trait CloneSidFromRaw: Sized {
     /// # Safety
     /// `sid` must be non-null and point to a valid SID for the duration of this
     /// call.
+    #[must_use]
     unsafe fn clone_sid_from_raw(sid: PSID) -> Self;
 }
 
