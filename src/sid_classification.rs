@@ -116,7 +116,7 @@ fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
 
 fn classify_authentication_authority(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
-        [1, ..] | [2, ..] => SidClassification::AuthenticationAuthority,
+        [1 | 2, ..] => SidClassification::AuthenticationAuthority,
         _ => SidClassification::Unknown,
     }
 }
