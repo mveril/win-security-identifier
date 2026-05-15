@@ -45,7 +45,7 @@ impl Sid {
     }
 }
 
-pub(crate) fn classify(
+pub fn classify(
     authority: SidIdentifierAuthority,
     sub_authorities: &[u32],
 ) -> SidClassification {
