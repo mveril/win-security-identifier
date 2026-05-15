@@ -87,6 +87,8 @@ impl SecurityIdentifier {
         let sub_authorities = sub_authorities.as_ref();
         // SAFETY: sub_authority_count is correctly validated by guard.
         InvalidSidParts::validate_len(sub_authorities.len())?;
+        // SAFETY: The length has just been validated, so the unchecked constructor
+        // receives a sub-authority slice within the supported Windows range.
         Ok(unsafe { Self::new_unchecked(identifier_authority, sub_authorities) })
     }
 
