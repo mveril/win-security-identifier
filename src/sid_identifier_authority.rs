@@ -43,6 +43,9 @@ impl SidIdentifierAuthority {
     /// Mandatory Label Authority (S-1-16)
     pub const MANDATORY_LABEL_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 16]);
 
+    /// Authentication Authority (S-1-18)
+    pub const SECURITY_AUTHENTICATION_AUTHORITY: Self = Self::new([0, 0, 0, 0, 0, 18]);
+
     /// Resource Manager Authority (S-1-9)
     ///
     /// Used by Windows resource managers (e.g. for claims-based access control).

@@ -30,6 +30,8 @@ pub enum SidClassification {
     Capability,
     /// Package authority SID under `S-1-15` with no more specific classification.
     Package,
+    /// Authentication authority SID family (`S-1-18-*`).
+    AuthenticationAuthority,
     /// SID shape not recognized by this crate.
     Unknown,
 }
@@ -52,6 +54,9 @@ fn classify(authority: SidIdentifierAuthority, sub_authorities: &[u32]) -> SidCl
         SidIdentifierAuthority::NT_AUTHORITY => classify_nt_authority(sub_authorities),
         SidIdentifierAuthority::APP_PACKAGE_AUTHORITY => {
             classify_package_authority(sub_authorities)
+        }
+        SidIdentifierAuthority::SECURITY_AUTHENTICATION_AUTHORITY => {
+            classify_authentication_authority(sub_authorities)
         }
         SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY if !sub_authorities.is_empty() => {
             SidClassification::IntegrityLevel
@@ -109,18 +114,18 @@ fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
+fn classify_authentication_authority(sub_authorities: &[u32]) -> SidClassification {
+    match sub_authorities {
+        [1, ..] | [2, ..] => SidClassification::AuthenticationAuthority,
+        _ => SidClassification::Unknown,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ConstSid, well_known};
-
-    fn assert_classifies(
-        authority: SidIdentifierAuthority,
-        sub_authorities: &[u32],
-        expected: SidClassification,
-    ) {
-        assert_eq!(classify(authority, sub_authorities), expected);
-    }
+    use crate::well_known;
+    use proptest::prelude::*;
 
     #[test]
     fn classifies_basic_well_known_sids() {
@@ -146,66 +151,71 @@ mod tests {
         );
     }
 
-    #[test]
-    fn classifies_only_exact_basic_well_known_sids() {
-        let cases = [
-            (
-                SidIdentifierAuthority::NULL_AUTHORITY,
-                &[0, 1][..],
-                SidClassification::Unknown,
-            ),
-            (
-                SidIdentifierAuthority::SECURITY_WORLD_AUTHORITY,
-                &[0, 1][..],
-                SidClassification::Unknown,
-            ),
-            (
-                SidIdentifierAuthority::SECURITY_LOCAL_AUTHORITY,
-                &[0, 1][..],
-                SidClassification::Unknown,
-            ),
-            (
-                SidIdentifierAuthority::SECURITY_CREATOR_AUTHORITY,
-                &[0, 1][..],
-                SidClassification::Unknown,
-            ),
-            (
-                SidIdentifierAuthority::SECURITY_CREATOR_AUTHORITY,
-                &[2][..],
-                SidClassification::Unknown,
-            ),
-        ];
+    proptest! {
+        #[test]
+        fn classifies_only_exact_basic_well_known_sids(
+            sub_authorities in prop_oneof![
+                Just(vec![0, 1]),
+                Just(vec![2]),
+            ]
+        ) {
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::NULL_AUTHORITY, &sub_authorities),
+                SidClassification::Unknown
+            );
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::SECURITY_WORLD_AUTHORITY, &sub_authorities),
+                SidClassification::Unknown
+            );
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::SECURITY_LOCAL_AUTHORITY, &sub_authorities),
+                SidClassification::Unknown
+            );
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::SECURITY_CREATOR_AUTHORITY, &sub_authorities),
+                SidClassification::Unknown
+            );
+        }
+    }
 
-        for (authority, sub_authorities, expected) in cases {
-            assert_classifies(authority, sub_authorities, expected);
+    proptest! {
+        #[test]
+        fn classifies_nt_authority_family_boundaries(
+            sub_authorities in prop_oneof![
+                Just(vec![21]),
+                Just(vec![21, 1, 2, 3]),
+                Just(vec![32]),
+                Just(vec![32, 544]),
+                Just(vec![32, 544, 1]),
+                Just(vec![80]),
+                Just(vec![80, 1]),
+                Just(vec![80, 1, 2, 3, 4, 5]),
+                Just(vec![18]),
+                Just(vec![79, 1]),
+                Just(vec![81, 1]),
+            ]
+        ) {
+            let expected = match sub_authorities.as_slice() {
+                [21] => SidClassification::NtAuthority,
+                [21, _, ..] => SidClassification::AccountDomain,
+                [32] => SidClassification::NtAuthority,
+                [32, _, ..] => SidClassification::BuiltinAlias,
+                [80] => SidClassification::NtAuthority,
+                [80, _, ..] => SidClassification::Service,
+                [18] => SidClassification::NtAuthority,
+                [79, ..] | [81, ..] => SidClassification::NtAuthority,
+                _ => unreachable!(),
+            };
+
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::NT_AUTHORITY, &sub_authorities),
+                expected
+            );
         }
     }
 
     #[test]
-    fn classifies_nt_authority_family_boundaries() {
-        let cases = [
-            (&[21][..], SidClassification::NtAuthority),
-            (&[21, 1][..], SidClassification::AccountDomain),
-            (&[21, 1, 2, 3][..], SidClassification::AccountDomain),
-            (&[32][..], SidClassification::NtAuthority),
-            (&[32, 544][..], SidClassification::BuiltinAlias),
-            (&[32, 544, 1][..], SidClassification::BuiltinAlias),
-            (&[80][..], SidClassification::NtAuthority),
-            (&[80, 1][..], SidClassification::Service),
-            (&[80, 1, 2, 3, 4, 5][..], SidClassification::Service),
-            (&[18][..], SidClassification::NtAuthority),
-            (&[79, 1][..], SidClassification::NtAuthority),
-            (&[81, 1][..], SidClassification::NtAuthority),
-        ];
-
-        for (sub_authorities, expected) in cases {
-            assert_classifies(
-                SidIdentifierAuthority::NT_AUTHORITY,
-                sub_authorities,
-                expected,
-            );
-        }
-
+    fn classifies_nt_authority_examples_from_well_known_sids() {
         assert_eq!(
             well_known::BUILTIN_ADMINISTRATORS.as_sid().classification(),
             SidClassification::BuiltinAlias
@@ -216,65 +226,111 @@ mod tests {
         );
     }
 
-    #[test]
-    fn classifies_integrity_and_package_authorities() {
-        let integrity = ConstSid::new(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, [8192]);
-        let app_container = ConstSid::new(SidIdentifierAuthority::APP_PACKAGE_AUTHORITY, [2, 1]);
-        let capability = ConstSid::new(SidIdentifierAuthority::APP_PACKAGE_AUTHORITY, [3, 1]);
+    proptest! {
+        #[test]
+        fn classifies_integrity_and_package_authorities(
+            sub_authorities in prop_oneof![
+                Just(vec![8192]),
+                Just(vec![8192, 1]),
+                Just(vec![2, 1]),
+                Just(vec![2, 1, 2]),
+                Just(vec![3, 1]),
+                Just(vec![3, 1, 2]),
+            ]
+        ) {
+            let (authority, expected) = match sub_authorities.as_slice() {
+                [8192] | [8192, ..] => (
+                    SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY,
+                    SidClassification::IntegrityLevel,
+                ),
+                [2, 1] | [2, 1, ..] => (
+                    SidIdentifierAuthority::APP_PACKAGE_AUTHORITY,
+                    SidClassification::AppContainer,
+                ),
+                [3, 1] | [3, 1, ..] => (
+                    SidIdentifierAuthority::APP_PACKAGE_AUTHORITY,
+                    SidClassification::Capability,
+                ),
+                _ => unreachable!(),
+            };
 
-        assert_eq!(
-            integrity.as_sid().classification(),
-            SidClassification::IntegrityLevel
-        );
-        assert_eq!(
-            app_container.as_sid().classification(),
-            SidClassification::AppContainer
-        );
-        assert_eq!(
-            capability.as_sid().classification(),
-            SidClassification::Capability
-        );
+            prop_assert_eq!(classify(authority, &sub_authorities), expected);
+        }
     }
 
-    #[test]
-    fn classifies_package_authority_family_boundaries() {
-        let cases = [
-            (&[][..], SidClassification::Package),
-            (&[2][..], SidClassification::Package),
-            (&[2, 1][..], SidClassification::AppContainer),
-            (&[2, 1, 2][..], SidClassification::AppContainer),
-            (&[3][..], SidClassification::Package),
-            (&[3, 1][..], SidClassification::Capability),
-            (&[3, 1, 2][..], SidClassification::Capability),
-            (&[1, 1][..], SidClassification::Package),
-            (&[4, 1][..], SidClassification::Package),
-        ];
+    proptest! {
+        #[test]
+        fn classifies_package_authority_family_boundaries(
+            sub_authorities in prop_oneof![
+                Just(vec![]),
+                Just(vec![2]),
+                Just(vec![2, 1]),
+                Just(vec![2, 1, 2]),
+                Just(vec![3]),
+                Just(vec![3, 1]),
+                Just(vec![3, 1, 2]),
+                Just(vec![1, 1]),
+                Just(vec![4, 1]),
+            ]
+        ) {
+            let expected = match sub_authorities.as_slice() {
+                [2] | [3] => SidClassification::Package,
+                [2, 1, ..] => SidClassification::AppContainer,
+                [3, 1, ..] => SidClassification::Capability,
+                [] | [1, 1] | [4, 1] => SidClassification::Package,
+                _ => unreachable!(),
+            };
 
-        for (sub_authorities, expected) in cases {
-            assert_classifies(
-                SidIdentifierAuthority::APP_PACKAGE_AUTHORITY,
-                sub_authorities,
-                expected,
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::APP_PACKAGE_AUTHORITY, &sub_authorities),
+                expected
             );
         }
     }
 
-    #[test]
-    fn classifies_mandatory_label_authority_boundaries() {
-        assert_classifies(
-            SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY,
-            &[],
-            SidClassification::Unknown,
-        );
-        assert_classifies(
-            SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY,
-            &[8192],
-            SidClassification::IntegrityLevel,
-        );
-        assert_classifies(
-            SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY,
-            &[8192, 1],
-            SidClassification::IntegrityLevel,
-        );
+    proptest! {
+        #[test]
+        fn classifies_mandatory_label_authority_boundaries(
+            sub_authorities in prop_oneof![
+                Just(vec![]),
+                Just(vec![8192]),
+                Just(vec![8192, 1]),
+            ]
+        ) {
+            let expected = match sub_authorities.as_slice() {
+                [] => SidClassification::Unknown,
+                [8192, ..] => SidClassification::IntegrityLevel,
+                _ => unreachable!(),
+            };
+
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, &sub_authorities),
+                expected
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn classifies_authentication_authority_boundaries(
+            sub_authorities in prop_oneof![
+                Just(vec![]),
+                Just(vec![1]),
+                Just(vec![1, 1]),
+                Just(vec![2]),
+                Just(vec![2, 1]),
+                Just(vec![3]),
+            ]
+        ) {
+            let expected = match sub_authorities.as_slice() {
+                [1, ..] | [2, ..] => SidClassification::AuthenticationAuthority,
+                _ => SidClassification::Unknown,
+            };
+
+            prop_assert_eq!(
+                classify(SidIdentifierAuthority::SECURITY_AUTHENTICATION_AUTHORITY, &sub_authorities),
+                expected
+            );
+        }
     }
 }
