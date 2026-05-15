@@ -337,6 +337,16 @@ impl DerefMut for SecurityIdentifier {
     );
 }
 
+impl SecurityIdentifier {
+    delegate! {
+        to self.inner {
+            #[must_use]
+            #[inline]
+            pub fn classification(&self) -> crate::SidClassification;
+        }
+    }
+}
+
 impl AsRef<Sid> for SecurityIdentifier {
     delegate! {
         to self.inner {

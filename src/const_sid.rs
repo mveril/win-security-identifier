@@ -1,5 +1,6 @@
 #[cfg(feature = "alloc")]
 use crate::SecurityIdentifier;
+use crate::SidClassification;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
 use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid, utils};
@@ -15,6 +16,7 @@ use core::{
     hash::{self, Hash},
     ptr,
 };
+use delegate::delegate;
 
 /// Fixed-size, compile-time Security Identifier (SID).
 ///
@@ -157,6 +159,14 @@ where
             reason = "N is guaranteed to be greater than 0"
         )]
         self.sub_authorities[N - 1]
+    }
+
+    delegate! {
+        to self.as_sid() {
+            #[must_use]
+            #[inline]
+            pub fn classification(&self) -> SidClassification;
+        }
     }
 
     /// Returns a reference to this `ConstSid` as a dynamically-sized [`Sid`].

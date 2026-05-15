@@ -126,6 +126,7 @@ pub(crate) use sid_size_info::SidSizeInfo;
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 extern crate alloc;
 
+mod sid_classification;
 mod sid_identifier_authority;
 #[cfg(all(test, feature = "alloc"))]
 pub(crate) use security_identifier::test::arb_security_identifier;
@@ -136,6 +137,7 @@ pub(crate) use security_identifier::test::arb_security_identifier;
 pub use sid_identifier_authority::SidIdentifierAuthority;
 
 pub use sid::Sid;
+pub use sid_classification::SidClassification;
 
 #[cfg(test)]
 #[allow(unused_imports)]

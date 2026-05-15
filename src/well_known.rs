@@ -145,20 +145,22 @@ pub const BUILTIN_IIS_IUSRS: ConstSid<2> =
 
 // ---- Mandatory Integrity Levels (S-1-16) ----
 
-const MANDATORY_LABEL_AUTHORITY: SidIdentifierAuthority =
-    SidIdentifierAuthority::new([0, 0, 0, 0, 0, 16]);
-
 /// Untrusted mandatory integrity level (S-1-16-0)
-pub const INTEGRITY_UNTRUSTED: ConstSid<1> = ConstSid::new(MANDATORY_LABEL_AUTHORITY, [0]);
+pub const INTEGRITY_UNTRUSTED: ConstSid<1> =
+    ConstSid::new(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, [0]);
 
 /// Low mandatory integrity level (S-1-16-4096)
-pub const INTEGRITY_LOW: ConstSid<1> = ConstSid::new(MANDATORY_LABEL_AUTHORITY, [4096]);
+pub const INTEGRITY_LOW: ConstSid<1> =
+    ConstSid::new(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, [4096]);
 
 /// Medium mandatory integrity level (S-1-16-8192)
-pub const INTEGRITY_MEDIUM: ConstSid<1> = ConstSid::new(MANDATORY_LABEL_AUTHORITY, [8192]);
+pub const INTEGRITY_MEDIUM: ConstSid<1> =
+    ConstSid::new(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, [8192]);
 
 /// High mandatory integrity level (S-1-16-12288)
-pub const INTEGRITY_HIGH: ConstSid<1> = ConstSid::new(MANDATORY_LABEL_AUTHORITY, [12288]);
+pub const INTEGRITY_HIGH: ConstSid<1> =
+    ConstSid::new(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, [12288]);
 
 /// System mandatory integrity level (S-1-16-16384)
-pub const INTEGRITY_SYSTEM: ConstSid<1> = ConstSid::new(MANDATORY_LABEL_AUTHORITY, [16384]);
+pub const INTEGRITY_SYSTEM: ConstSid<1> =
+    ConstSid::new(SidIdentifierAuthority::MANDATORY_LABEL_AUTHORITY, [16384]);
