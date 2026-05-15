@@ -145,6 +145,9 @@ impl StackSid {
             #[must_use]
             #[inline]
             pub const fn rid(&self) -> u32;
+            #[must_use]
+            #[inline]
+            pub fn classification(&self) -> crate::SidClassification;
         }
 
         to self.as_sid_mut() {
