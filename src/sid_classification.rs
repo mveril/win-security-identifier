@@ -45,10 +45,7 @@ impl Sid {
     }
 }
 
-pub fn classify(
-    authority: SidIdentifierAuthority,
-    sub_authorities: &[u32],
-) -> SidClassification {
+pub fn classify(authority: SidIdentifierAuthority, sub_authorities: &[u32]) -> SidClassification {
     match authority {
         SidIdentifierAuthority::NULL_AUTHORITY => classify_null(sub_authorities),
         SidIdentifierAuthority::SECURITY_WORLD_AUTHORITY => classify_world(sub_authorities),
