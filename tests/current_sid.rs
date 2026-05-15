@@ -173,27 +173,23 @@ where
     let account_lookup = SecurityIdentifier::lookup_local_account_name::<SecurityIdentifier, _>(
         user.account.to_string(),
     )
-        .map(|lookup| {
-            lookup
-                .map(|lookup| {
-                    let sid_type = lookup.sid_type();
-                    (lookup.sid, lookup.domain_name, sid_type)
-                })
-                .map_err(|_| ())
-        })
-        .map(|lookup| {
-            lookup.map(|(lookup_sid, domain_name, sid_type)| {
-                (lookup_sid, domain_name, sid_type.map_err(|_| ()))
+    .map(|lookup| {
+        lookup
+            .map(|lookup| {
+                let sid_type = lookup.sid_type();
+                (lookup.sid, lookup.domain_name, sid_type)
             })
-        });
+            .map_err(|_| ())
+    })
+    .map(|lookup| {
+        lookup.map(|(lookup_sid, domain_name, sid_type)| {
+            (lookup_sid, domain_name, sid_type.map_err(|_| ()))
+        })
+    });
 
     assert_eq!(
         account_lookup,
-        Some(Ok((
-            user.sid.into(),
-            user.account,
-            Ok(SidType::User)
-        ))),
+        Some(Ok((user.sid.into(), user.account, Ok(SidType::User)))),
         "Account name lookup should roundtrip to the current user SID"
     );
 }
