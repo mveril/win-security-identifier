@@ -24,7 +24,7 @@ pub enum SidClassification {
     IntegrityLevel,
     /// Service SID family (`S-1-5-80-*`).
     Service,
-    /// AppContainer package SID family (`S-1-15-2-*`).
+    /// `AppContainer` package SID family (`S-1-15-2-*`).
     AppContainer,
     /// Capability SID family (`S-1-15-3-*`).
     Capability,
