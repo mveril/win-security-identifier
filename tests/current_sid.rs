@@ -170,7 +170,9 @@ where
         "Local SID type should match lookup result"
     );
 
-    let account_lookup = SecurityIdentifier::lookup_local_account_name(user.account.to_string())
+    let account_lookup = SecurityIdentifier::lookup_local_account_name::<SecurityIdentifier, _>(
+        user.account.to_string(),
+    )
         .map(|lookup| {
             lookup
                 .map(|lookup| {
@@ -189,7 +191,7 @@ where
         account_lookup,
         Some(Ok((
             user.sid.into(),
-            user.account.clone(),
+            user.account,
             Ok(SidType::User)
         ))),
         "Account name lookup should roundtrip to the current user SID"
