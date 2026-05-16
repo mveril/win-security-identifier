@@ -34,7 +34,7 @@ use delegate::delegate;
 /// ```rust
 /// # use win_security_identifier::{ConstSid, well_known};
 /// const ADMIN_ALIAS: ConstSid<2> = well_known::BUILTIN_ADMINISTRATORS;
-/// assert_eq!(ADMIN_ALIAS.as_sid().rid(), 544);
+/// assert_eq!(ADMIN_ALIAS.as_sid().last_sub_authority(), 544);
 ///
 /// # #[cfg(feature = "alloc")]
 /// # {
@@ -143,17 +143,21 @@ where
             identifier_authority,
         }
     }
-    /// Returns the RID (Relative Identifier), which is the last sub-authority in the SID.
+    /// Returns the last sub-authority in the SID.
+    ///
+    /// Every valid SID has at least one sub-authority, so this is always
+    /// available. This is a structural accessor only; the returned value is an
+    /// account RID only for account SIDs, such as `S-1-5-21-*-*-*-RID`.
     /// # Examples
     /// ```rust
     /// # use win_security_identifier::{Sid, ConstSid, SidIdentifierAuthority};
     /// let const_sid = ConstSid::<3>::new(SidIdentifierAuthority::NT_AUTHORITY, [1, 2, 3]);
     /// let sid = const_sid.as_sid();
-    /// assert_eq!(sid.rid(), 3);
+    /// assert_eq!(sid.last_sub_authority(), 3);
     /// ```
     #[inline]
     #[must_use]
-    pub const fn rid(&self) -> u32 {
+    pub const fn last_sub_authority(&self) -> u32 {
         #[expect(
             clippy::indexing_slicing,
             reason = "N is guaranteed to be greater than 0"

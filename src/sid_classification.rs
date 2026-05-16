@@ -146,15 +146,17 @@ mod tests {
     #[cfg(feature = "std")]
     fn single_except(excluded: &'static [u32]) -> impl Strategy<Value = Vec<u32>> {
         any::<u32>()
-            .prop_filter("excluded sub-authority", move |rid| !excluded.contains(rid))
-            .prop_map(|rid| vec![rid])
+            .prop_filter("excluded sub-authority", move |sub_authority| {
+                !excluded.contains(sub_authority)
+            })
+            .prop_map(|sub_authority| vec![sub_authority])
     }
 
     #[cfg(feature = "std")]
     fn with_first_except(excluded: &'static [u32]) -> impl Strategy<Value = Vec<u32>> {
         (
-            any::<u32>().prop_filter("excluded first sub-authority", move |rid| {
-                !excluded.contains(rid)
+            any::<u32>().prop_filter("excluded first sub-authority", move |sub_authority| {
+                !excluded.contains(sub_authority)
             }),
             prop_vec(any::<u32>(), 1..=4),
         )
