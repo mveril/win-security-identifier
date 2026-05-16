@@ -1,4 +1,4 @@
-use crate::{Sid, SidClassification, StackSid};
+use crate::{ConstSid, Sid, SidClassification};
 use core::borrow::Borrow;
 use core::fmt::{self, Debug, Display};
 use core::ops::Deref;
@@ -36,18 +36,35 @@ impl AccountSid {
     /// the sub-authority count, and the domain SID has one fewer sub-authority.
     #[must_use]
     #[inline]
-    pub fn account_domain_sid(&self) -> StackSid {
+    pub fn account_domain_sid(&self) -> ConstSid<4> {
         let sub_authorities = self.inner.sub_authorities();
+        debug_assert!(
+            matches!(sub_authorities, [21, _, _, _, _]),
+            "AccountSid invariant requires S-1-5-21-*-*-*-RID"
+        );
+        debug_assert_eq!(
+            sub_authorities.len(),
+            5,
+            "AccountSid invariant requires exactly five sub-authorities"
+        );
+
         #[expect(
             clippy::indexing_slicing,
-            reason = "AccountSid invariant guarantees at least one RID sub-authority"
+            reason = "AccountSid invariant guarantees exactly five sub-authorities"
         )]
+        let domain_sub_authorities = &sub_authorities[..sub_authorities.len() - 1];
+        debug_assert_eq!(
+            domain_sub_authorities.len(),
+            4,
+            "dropping the RID from an account SID must leave a four-part domain SID"
+        );
+
         // SAFETY: AccountSid requires exactly five sub-authorities, so dropping
         // the RID leaves the valid four-part domain SID.
         unsafe {
-            StackSid::new_unchecked(
+            ConstSid::new(
                 self.inner.identifier_authority,
-                &sub_authorities[..sub_authorities.len() - 1],
+                domain_sub_authorities.try_into().unwrap_unchecked(),
             )
         }
     }
@@ -64,12 +81,12 @@ fn has_account_rid_shape(sid: &Sid) -> bool {
     matches!(sid.sub_authorities(), [21, _, _, _, _])
 }
 
-impl TryFrom<&'a Sid> for &'a AccountSid {
+impl<'a> TryFrom<&'a Sid> for &'a AccountSid {
     type Error = NotAccountSid;
 
     #[inline]
     fn try_from(value: &'a Sid) -> Result<Self, Self::Error> {
-        if AccountSid::is_account_sid(sid) {
+        if AccountSid::is_account_sid(value) {
             // SAFETY: AccountSid is repr(transparent) over Sid and the shape was validated above.
             Ok(unsafe { &*(ptr::from_ref(value) as *const AccountSid) })
         } else {
@@ -126,7 +143,7 @@ impl<'a> From<&'a AccountSid> for &'a Sid {
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in tests")]
 mod tests {
     use super::*;
-    use crate::{ConstSid, well_known};
+    use crate::{ConstSid, SidIdentifierAuthority, well_known};
 
     #[test]
     fn accepts_domain_account_sid() {
