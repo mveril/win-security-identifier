@@ -13,7 +13,8 @@ use std::{
     process::{Command, Stdio},
 };
 use win_security_identifier::{
-    CloneSidFromRaw, GetCurrentSid, SecurityIdentifier, Sid, SidIdentifierAuthority, StackSid,
+    CloneSidFromRaw, GetCurrentSid, LookupAccountName, SecurityIdentifier, Sid,
+    SidIdentifierAuthority, StackSid,
     sid_lookup::{DomainAndName, SidType},
 };
 
@@ -94,7 +95,7 @@ fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
 
 fn current_user_sid_and_account<T>()
 where
-    T: CloneSidFromRaw + AsRef<Sid> + PartialEq<StackSid> + Debug,
+    T: CloneSidFromRaw + LookupAccountName + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
     const PS_SCRIPT: &str = include_str!("assets/get_sid_account.ps1");
 
@@ -170,26 +171,28 @@ where
         "Local SID type should match lookup result"
     );
 
-    let account_lookup = SecurityIdentifier::lookup_local_account_name::<SecurityIdentifier, _>(
-        user.account.to_string(),
-    )
-    .map(|lookup| {
-        lookup
-            .map(|lookup| {
-                let sid_type = lookup.sid_type();
-                (lookup.sid, lookup.domain_name, sid_type)
-            })
-            .map_err(|_| ())
-    })
-    .map(|lookup| {
-        lookup.map(|(lookup_sid, domain_name, sid_type)| {
-            (lookup_sid, domain_name, sid_type.map_err(|_| ()))
+    let account_lookup = T::lookup_local_account_name(user.account.to_string())
+        .map(|lookup| {
+            lookup
+                .map(|lookup| {
+                    let sid_type = lookup.sid_type();
+                    (
+                        lookup.sid.as_ref() == sid.as_ref(),
+                        lookup.domain_name,
+                        sid_type,
+                    )
+                })
+                .map_err(|_| ())
         })
-    });
+        .map(|lookup| {
+            lookup.map(|(sid_matches, domain_name, sid_type)| {
+                (sid_matches, domain_name, sid_type.map_err(|_| ()))
+            })
+        });
 
     assert_eq!(
         account_lookup,
-        Some(Ok((user.sid.into(), user.account, Ok(SidType::User)))),
+        Some(Ok((true, user.account, Ok(SidType::User)))),
         "Account name lookup should roundtrip to the current user SID"
     );
 }

@@ -1,5 +1,3 @@
-use crate::SecurityIdentifier;
-
 use super::Error;
 use super::SidType;
 use super::domain_and_name::DomainAndName;
@@ -146,13 +144,14 @@ fn account_name_component(account_name: &U16CString) -> OsString {
     OsString::from_wide(name)
 }
 
-impl SecurityIdentifier {
+/// Performs Windows account-name lookups and returns the SID as `Self`.
+pub trait LookupAccountName: CloneSidFromRaw {
     /// Performs a lookup of an account name on the local machine.
     #[inline]
     #[must_use]
-    pub fn lookup_local_account_name<T: CloneSidFromRaw, S: AsRef<OsStr>>(
+    fn lookup_local_account_name<S: AsRef<OsStr>>(
         account_name: S,
-    ) -> Option<Result<AccountLookup<T>, Error>> {
+    ) -> Option<Result<AccountLookup<Self>, Error>> {
         osstr_to_wide(account_name.as_ref()).and_then(|account_name| {
             AccountLookupOperation::new(&account_name, None).map(AccountLookupOperation::process)
         })
@@ -161,10 +160,10 @@ impl SecurityIdentifier {
     /// Performs a lookup of an account name on a remote machine.
     #[inline]
     #[must_use]
-    pub fn lookup_remote_account_name<T: CloneSidFromRaw, M: AsRef<OsStr>, S: AsRef<OsStr>>(
+    fn lookup_remote_account_name<M: AsRef<OsStr>, S: AsRef<OsStr>>(
         machine_name: M,
         account_name: S,
-    ) -> Option<Result<AccountLookup<T>, Error>> {
+    ) -> Option<Result<AccountLookup<Self>, Error>> {
         osstr_to_wide(machine_name.as_ref()).and_then(|machine_name| {
             osstr_to_wide(account_name.as_ref()).and_then(|account_name| {
                 AccountLookupOperation::new(&account_name, Some(&machine_name))
@@ -173,3 +172,5 @@ impl SecurityIdentifier {
         })
     }
 }
+
+impl<T> LookupAccountName for T where T: CloneSidFromRaw {}

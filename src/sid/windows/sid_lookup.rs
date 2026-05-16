@@ -1,7 +1,7 @@
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 mod account_lookup_operation;
 mod sid_type;
-pub use account_lookup_operation::AccountLookup;
+pub use account_lookup_operation::{AccountLookup, LookupAccountName};
 pub use sid_type::SidType;
 pub mod domain_and_name;
 pub use domain_and_name::DomainAndName;
