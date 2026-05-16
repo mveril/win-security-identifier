@@ -54,7 +54,7 @@
 //!     [32, 544],
 //! );
 //!
-//! assert_eq!(ADMIN.as_sid().rid(), 544);
+//! assert_eq!(ADMIN.as_sid().last_sub_authority(), 544);
 //!
 //! # #[cfg(feature = "alloc")]
 //! # {
@@ -101,10 +101,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(needs_ptr_metadata_feature, feature(ptr_metadata))]
+mod account_sid;
 #[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
 
+pub use account_sid::{AccountSid, NotAccountSid};
 #[cfg(doc)]
 use core::alloc::Layout;
 #[cfg(all(windows, feature = "std"))]
