@@ -4,7 +4,10 @@ use core::fmt::{self, Debug, Display};
 use core::ops::Deref;
 use core::ptr;
 
-/// Borrowed view over an account SID (`S-1-5-21-*-*-*-RID`).
+/// Borrowed view over a domain account SID (`S-1-5-21-*-*-*-RID`).
+///
+/// This excludes other SID families whose last sub-authority may still be
+/// useful structurally, but is not an account RID for this type.
 #[repr(transparent)]
 pub struct AccountSid {
     inner: Sid,
@@ -24,10 +27,13 @@ impl AccountSid {
     }
 
     /// Returns the account RID.
+    ///
+    /// This accessor is available only after the SID has been validated as a
+    /// domain account SID (`S-1-5-21-*-*-*-RID`).
     #[must_use]
     #[inline]
     pub const fn rid(&self) -> u32 {
-        self.inner.rid()
+        self.inner.last_sub_authority()
     }
 
     /// Returns the account domain SID by value.

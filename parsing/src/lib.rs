@@ -302,7 +302,7 @@ mod tests {
     #[test]
     fn reports_invalid_sub_authority() {
         assert_eq!(
-            "S-1-5-not-a-rid".parse::<SidComponents>().err(),
+            "S-1-5-not-a-sub-authority".parse::<SidComponents>().err(),
             Some(InvalidSidFormat::InvalidSubAuthority { index: 0 })
         );
     }
@@ -322,7 +322,9 @@ mod tests {
     #[test]
     fn reports_invalid_sub_authority_index() {
         assert_eq!(
-            "S-1-5-32-not-a-rid".parse::<SidComponents>().err(),
+            "S-1-5-32-not-a-sub-authority"
+                .parse::<SidComponents>()
+                .err(),
             Some(InvalidSidFormat::InvalidSubAuthority { index: 1 })
         );
     }

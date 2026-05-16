@@ -144,7 +144,7 @@ impl StackSid {
             pub const fn as_bytes(&self) -> &[u8];
             #[must_use]
             #[inline]
-            pub const fn rid(&self) -> u32;
+            pub const fn last_sub_authority(&self) -> u32;
             #[must_use]
             #[inline]
             pub fn classification(&self) -> crate::SidClassification;

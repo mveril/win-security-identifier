@@ -54,7 +54,7 @@
 //!     [32, 544],
 //! );
 //!
-//! assert_eq!(ADMIN.as_sid().rid(), 544);
+//! assert_eq!(ADMIN.as_sid().last_sub_authority(), 544);
 //!
 //! # #[cfg(feature = "alloc")]
 //! # {
