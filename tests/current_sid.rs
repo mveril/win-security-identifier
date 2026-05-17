@@ -13,9 +13,15 @@ use std::{
     process::{Command, Stdio},
 };
 use win_security_identifier::{
-    CloneSidFromRaw, GetCurrentSid, SecurityIdentifier, Sid, SidIdentifierAuthority, StackSid,
-    sid_lookup::{DomainAndName, SidType},
+    CloneSidFromRaw, GetCurrentSid, LookupAccountName, SecurityIdentifier, Sid,
+    SidIdentifierAuthority, StackSid,
+    sid_lookup::{AccountLookup, DomainAndName, SidLookup, SidType},
 };
+
+type CheckedSidType = Result<SidType, ()>;
+type OptionalLookup<T> = Option<Result<T, ()>>;
+type AccountAndType = (DomainAndName, CheckedSidType);
+type AccountNameLookup = (bool, DomainAndName, CheckedSidType);
 
 #[derive(Debug, Deserialize)]
 struct PsUser {
@@ -94,8 +100,52 @@ fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
 
 fn current_user_sid_and_account<T>()
 where
-    T: CloneSidFromRaw + AsRef<Sid> + PartialEq<StackSid> + Debug,
+    T: CloneSidFromRaw + LookupAccountName + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
+    let user = current_user_from_powershell();
+    let sid = T::get_current_user_sid().expect("Failed to get current user SID");
+
+    assert_eq!(sid, user.sid, "SID does not match expected value");
+
+    let sid_lookup = sid_lookup_account(sid.as_ref());
+
+    assert_eq!(
+        sid_lookup,
+        Some(Ok((user.account.clone(), Ok(SidType::User)))),
+        "Domain and name do not match expected value"
+    );
+
+    let sid_lookup_type = sid_lookup.as_ref().map(sid_type_from_lookup);
+
+    assert_eq!(
+        sid_lookup_type,
+        Some(Ok(SidType::User)),
+        "Domain and name do not match expected value"
+    );
+
+    let local_sid_type = local_sid_type(sid.as_ref());
+
+    assert_eq!(
+        local_sid_type,
+        Some(Ok(SidType::User)),
+        "Local SID type does not match expected value"
+    );
+
+    assert_eq!(
+        local_sid_type, sid_lookup_type,
+        "Local SID type should match lookup result"
+    );
+
+    let account_lookup = account_lookup_matches_current_sid::<T>(&user.account, sid.as_ref());
+
+    assert_eq!(
+        account_lookup,
+        Some(Ok((true, user.account, Ok(SidType::User)))),
+        "Account name lookup should roundtrip to the current user SID"
+    );
+}
+
+fn current_user_from_powershell() -> PsUser {
     const PS_SCRIPT: &str = include_str!("assets/get_sid_account.ps1");
 
     let args = &[
@@ -115,58 +165,57 @@ where
         String::from_utf8_lossy(&out.stderr)
     );
 
-    let user: PsUser =
-        serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell");
+    serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
+}
 
-    let sid = T::get_current_user_sid().expect("Failed to get current user SID");
+fn sid_lookup_account(sid: &Sid) -> OptionalLookup<AccountAndType> {
+    sid.lookup_local_sid()
+        .map(|lookup| lookup.map(sid_lookup_parts).map_err(drop_error))
+}
 
-    assert_eq!(sid, user.sid, "SID does not match expected value");
+fn sid_lookup_parts(lookup: SidLookup) -> AccountAndType {
+    let sid_type = checked_sid_type(lookup.sid_type());
 
-    let lookup = sid
-        .as_ref()
-        .lookup_local_sid()
-        .map(|lookup| {
-            lookup
-                .map(|lookup| {
-                    let sid_type = lookup.sid_type();
-                    (lookup.domain_name, sid_type)
-                })
-                .map_err(|_| ())
-        })
-        .map(|lookup| {
-            lookup.map(|(domain_name, sid_type)| (domain_name, sid_type.map_err(|_| ())))
-        });
+    (lookup.domain_name, sid_type)
+}
 
-    assert_eq!(
-        lookup,
-        Some(Ok((user.account, Ok(SidType::User)))),
-        "Domain and name do not match expected value"
-    );
-
-    let lookup_sid_type = lookup.as_ref().map(|lookup| match lookup {
+const fn sid_type_from_lookup(lookup: &Result<AccountAndType, ()>) -> CheckedSidType {
+    match lookup {
         Ok((_, sid_type)) => *sid_type,
         Err(()) => Err(()),
-    });
-
-    assert_eq!(
-        lookup_sid_type,
-        Some(Ok(SidType::User)),
-        "Domain and name do not match expected value"
-    );
-
-    let local_sid_type = sid
-        .as_ref()
-        .local_sid_type()
-        .map(|sid_type| sid_type.map_err(|_| ()));
-
-    assert_eq!(
-        local_sid_type,
-        Some(Ok(SidType::User)),
-        "Local SID type does not match expected value"
-    );
-
-    assert_eq!(
-        local_sid_type, lookup_sid_type,
-        "Local SID type should match lookup result"
-    );
+    }
 }
+
+fn local_sid_type(sid: &Sid) -> Option<CheckedSidType> {
+    sid.local_sid_type().map(checked_sid_type)
+}
+
+fn account_lookup_matches_current_sid<T>(
+    account: &DomainAndName,
+    sid: &Sid,
+) -> OptionalLookup<AccountNameLookup>
+where
+    T: CloneSidFromRaw + LookupAccountName + AsRef<Sid>,
+{
+    T::lookup_local_account_name(account.to_string()).map(|lookup| {
+        lookup
+            .map(|lookup| account_lookup_parts(lookup, sid))
+            .map_err(drop_error)
+    })
+}
+
+fn account_lookup_parts<T>(lookup: AccountLookup<T>, sid: &Sid) -> AccountNameLookup
+where
+    T: CloneSidFromRaw + AsRef<Sid>,
+{
+    let sid_matches = lookup.sid.as_ref() == sid;
+    let sid_type = checked_sid_type(lookup.sid_type());
+
+    (sid_matches, lookup.domain_name, sid_type)
+}
+
+fn checked_sid_type<E>(sid_type: Result<SidType, E>) -> CheckedSidType {
+    sid_type.map_err(drop_error)
+}
+
+fn drop_error<E>(_: E) {}

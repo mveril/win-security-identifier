@@ -115,6 +115,8 @@ pub use ext::{CloneSidFromRaw, GetCurrentSid, TokenError};
 pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]
 pub use sid::sid_lookup;
+#[cfg(all(windows, feature = "std"))]
+pub use sid::sid_lookup::LookupAccountName;
 mod ext;
 mod invalid_sid_binary_format;
 mod invalid_sid_parts;
