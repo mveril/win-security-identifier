@@ -4,6 +4,9 @@ use core::fmt::{self, Debug, Display};
 use core::ops::Deref;
 use core::ptr;
 
+const ACCOUNT_DOMAIN_SID_SUB_AUTHORITY_COUNT: usize = 4;
+const ACCOUNT_SID_SUB_AUTHORITY_COUNT: usize = ACCOUNT_DOMAIN_SID_SUB_AUTHORITY_COUNT + 1; // +1 for the RID
+
 /// Borrowed view over a domain account SID (`S-1-5-21-*-*-*-RID`).
 ///
 /// This excludes other SID families whose last sub-authority may still be
@@ -42,7 +45,7 @@ impl AccountSid {
     /// the sub-authority count, and the domain SID has one fewer sub-authority.
     #[must_use]
     #[inline]
-    pub fn account_domain_sid(&self) -> ConstSid<4> {
+    pub fn account_domain_sid(&self) -> ConstSid<ACCOUNT_DOMAIN_SID_SUB_AUTHORITY_COUNT> {
         let sub_authorities = self.inner.sub_authorities();
         debug_assert!(
             matches!(sub_authorities, [21, _, _, _, _]),
@@ -50,7 +53,7 @@ impl AccountSid {
         );
         debug_assert_eq!(
             sub_authorities.len(),
-            5,
+            ACCOUNT_SID_SUB_AUTHORITY_COUNT,
             "AccountSid invariant requires exactly five sub-authorities"
         );
 
@@ -124,6 +127,20 @@ impl Deref for AccountSid {
     }
 }
 
+impl<'a> From<&'a AccountSid> for ConstSid<ACCOUNT_SID_SUB_AUTHORITY_COUNT> {
+    #[inline]
+    fn from(value: &'a AccountSid) -> Self {
+        debug_assert!(
+            matches!(value.inner.sub_authorities(), [21, _, _, _, _]),
+            "AccountSid invariant requires S-1-5-21-*-*-*-RID"
+        );
+        // SAFETY: AccountSid invariant guarantees the correct shape for the domain SID and RID.
+        Self::new(value.inner.identifier_authority, unsafe {
+            value.inner.sub_authorities().try_into().unwrap_unchecked()
+        })
+    }
+}
+
 impl Debug for AccountSid {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -150,28 +167,49 @@ impl<'a> From<&'a AccountSid> for &'a Sid {
 mod tests {
     use super::*;
     use crate::{ConstSid, SidIdentifierAuthority, well_known};
-
-    #[test]
-    fn accepts_domain_account_sid() {
-        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 1, 2, 3, 500]);
-
-        let account_sid = <&AccountSid>::try_from(sid.as_sid()).unwrap();
-        let domain_sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 1, 2, 3]);
-
-        assert_eq!(account_sid.rid(), 500);
-        assert_eq!(account_sid.account_domain_sid(), domain_sid);
-        assert_eq!(account_sid.as_sid(), sid.as_sid());
-    }
+    use proptest::prelude::*;
 
     #[test]
     fn rejects_builtin_alias_sid() {
         assert!(<&AccountSid>::try_from(well_known::BUILTIN_ADMINISTRATORS.as_sid()).is_err());
     }
 
-    #[test]
-    fn rejects_domain_sid_without_account_rid() {
-        let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [21, 1, 2, 3]);
+    proptest! {
+        #[test]
+        fn accepts_domain_account_sid(
+            domain_part_1 in any::<u32>(),
+            domain_part_2 in any::<u32>(),
+            domain_part_3 in any::<u32>(),
+            rid in any::<u32>(),
+        ) {
+            let sid = ConstSid::new(
+                SidIdentifierAuthority::NT_AUTHORITY,
+                [21, domain_part_1, domain_part_2, domain_part_3, rid],
+            );
 
-        assert!(<&AccountSid>::try_from(sid.as_sid()).is_err());
+            let account_sid = <&AccountSid>::try_from(sid.as_sid()).unwrap();
+            let domain_sid = ConstSid::new(
+                SidIdentifierAuthority::NT_AUTHORITY,
+                [21, domain_part_1, domain_part_2, domain_part_3],
+            );
+
+            prop_assert_eq!(account_sid.rid(), rid);
+            prop_assert_eq!(account_sid.account_domain_sid(), domain_sid);
+            prop_assert_eq!(account_sid.as_sid(), sid.as_sid());
+        }
+
+        #[test]
+        fn rejects_domain_sid_without_account_rid(
+            domain_part_1 in any::<u32>(),
+            domain_part_2 in any::<u32>(),
+            domain_part_3 in any::<u32>(),
+        ) {
+            let sid = ConstSid::new(
+                SidIdentifierAuthority::NT_AUTHORITY,
+                [21, domain_part_1, domain_part_2, domain_part_3],
+            );
+
+            prop_assert!(<&AccountSid>::try_from(sid.as_sid()).is_err());
+        }
     }
 }
