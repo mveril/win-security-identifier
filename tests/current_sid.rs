@@ -115,7 +115,7 @@ where
         "Domain and name do not match expected value"
     );
 
-    let sid_lookup_type = sid_type_from_lookup(&sid_lookup);
+    let sid_lookup_type = sid_lookup.as_ref().map(sid_type_from_lookup);
 
     assert_eq!(
         sid_lookup_type,
@@ -179,11 +179,11 @@ fn sid_lookup_parts(lookup: SidLookup) -> AccountAndType {
     (lookup.domain_name, sid_type)
 }
 
-fn sid_type_from_lookup(lookup: &OptionalLookup<AccountAndType>) -> Option<CheckedSidType> {
-    lookup.as_ref().map(|lookup| match lookup {
+const fn sid_type_from_lookup(lookup: &Result<AccountAndType, ()>) -> CheckedSidType {
+    match lookup {
         Ok((_, sid_type)) => *sid_type,
         Err(()) => Err(()),
-    })
+    }
 }
 
 fn local_sid_type(sid: &Sid) -> Option<CheckedSidType> {
