@@ -234,7 +234,10 @@ where
     let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
     assert_eq!(
         logon_sid.as_ref().map(std::convert::AsRef::as_ref),
-        token.logon_sid.as_ref().map(win_security_identifier::StackSid::as_sid),
+        token
+            .logon_sid
+            .as_ref()
+            .map(win_security_identifier::StackSid::as_sid),
         "logon SID does not match the current token"
     );
     if let Some(logon_sid) = logon_sid.as_ref() {
