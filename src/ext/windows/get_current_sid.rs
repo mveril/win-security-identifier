@@ -1,6 +1,7 @@
 use crate::sid::Sid;
 mod token_error;
 use super::CloneSidFromRaw;
+use crate::utils::validate_sid_bytes_unaligned;
 use core::mem::{MaybeUninit, align_of, size_of};
 use core::ptr;
 use smallvec::SmallVec;
@@ -10,7 +11,7 @@ pub use token_error::TokenError;
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
     Security::{
-        GetTokenInformation, IsValidSid, SECURITY_MAX_SID_SIZE, TOKEN_GROUPS,
+        GetLengthSid, GetTokenInformation, SECURITY_MAX_SID_SIZE, TOKEN_GROUPS,
         TOKEN_INFORMATION_CLASS, TOKEN_PRIMARY_GROUP, TOKEN_QUERY, TOKEN_USER, TokenGroups,
         TokenPrimaryGroup, TokenUser,
     },
@@ -366,9 +367,19 @@ fn is_supported_sid(raw_sid: windows_sys::Win32::Security::PSID) -> bool {
     if raw_sid.is_null() {
         return false;
     }
-    // SAFETY: `raw_sid` comes from a Windows TOKEN_GROUPS entry. IsValidSid
-    // validates the pointed-to SID before the crate interprets its byte layout.
-    unsafe { IsValidSid(raw_sid) != 0 }
+    // SAFETY: `raw_sid` comes from a Windows TOKEN_GROUPS entry. GetLengthSid
+    // reads the SID header so the crate can validate the full supported layout.
+    let len = unsafe { GetLengthSid(raw_sid) };
+    if len == 0 {
+        return false;
+    }
+    let Ok(len) = usize::try_from(len) else {
+        return false;
+    };
+    // SAFETY: `raw_sid` points to `len` bytes according to GetLengthSid; the
+    // crate validation below rejects unsupported SID layouts before cloning.
+    let bytes = unsafe { core::slice::from_raw_parts(raw_sid.cast(), len) };
+    validate_sid_bytes_unaligned(bytes).is_ok()
 }
 
 #[cfg(test)]
