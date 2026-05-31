@@ -73,7 +73,7 @@ const _: () = assert!(
 struct TokenGroupAttributes(u32);
 
 impl TokenGroupAttributes {
-    const LOGON_ID: Self = Self(SE_GROUP_LOGON_ID as u32);
+    const LOGON_ID: Self = Self(SE_GROUP_LOGON_ID.cast_unsigned());
 
     const fn from_raw(raw: u32) -> Self {
         Self(raw)
@@ -194,9 +194,14 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
     ///
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
+    #[inline]
     fn get_current_primary_group_sid() -> Result<Self, TokenError> {
         let token_handle = open_current_process_token()?;
         let buffer = query_token_information(token_handle.as_raw_handle(), TokenPrimaryGroup)?;
+        #[allow(
+            clippy::cast_ptr_alignment,
+            reason = "TokenInformationBuffer storage alignment is checked against TOKEN_PRIMARY_GROUP"
+        )]
         let primary_group = buffer.as_ptr().cast::<TOKEN_PRIMARY_GROUP>();
         // SAFETY: The buffer was returned by GetTokenInformation for TokenPrimaryGroup.
         let raw_sid = unsafe { (*primary_group).PrimaryGroup };
@@ -209,6 +214,7 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
     ///
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
+    #[inline]
     fn get_current_user_group_sids() -> Result<Box<[Self]>, TokenError> {
         current_token_group_entries(|_, _| true)
             .map(|groups| groups.into_iter().map(|(sid, _)| sid).collect::<Box<[_]>>())
@@ -218,6 +224,7 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
     ///
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
+    #[inline]
     fn get_current_logon_sid() -> Result<Option<Self>, TokenError> {
         let groups = current_token_group_entries(|_, attributes| attributes.is_logon_id())?;
         Ok(groups.into_iter().next().map(|(sid, _)| sid))
@@ -227,6 +234,7 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
     ///
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
+    #[inline]
     fn is_current_user_member_of(sid: &Sid) -> Result<bool, TokenError> {
         let current_user = Self::get_current_user_sid()?;
         if current_user.as_ref() == sid {
@@ -254,8 +262,10 @@ fn open_current_process_token() -> Result<OwnedHandle, TokenError> {
         return Err(TokenError::OpenTokenFailed(err));
     }
 
-    // SAFETY: OpenProcessToken reported success; the handle is initialized and owned.
-    Ok(unsafe { OwnedHandle::from_raw_handle(raw_handle_mu.assume_init()) })
+    // SAFETY: OpenProcessToken reported success; the handle is initialized.
+    let raw_handle = unsafe { raw_handle_mu.assume_init() };
+    // SAFETY: `raw_handle` is a valid owned handle obtained from the OS.
+    Ok(unsafe { OwnedHandle::from_raw_handle(raw_handle) })
 }
 
 fn query_token_information(
@@ -318,16 +328,20 @@ where
 {
     let token_handle = open_current_process_token()?;
     let buffer = query_token_information(token_handle.as_raw_handle(), TokenGroups)?;
+    #[allow(
+        clippy::cast_ptr_alignment,
+        reason = "TokenInformationBuffer storage alignment is checked against TOKEN_GROUPS"
+    )]
     let token_groups = buffer.as_ptr().cast::<TOKEN_GROUPS>();
     let group_count = {
         // SAFETY: The buffer was returned by GetTokenInformation for TokenGroups.
         let raw_count = unsafe { (*token_groups).GroupCount };
         usize::try_from(raw_count).map_err(|_| TokenError::InvalidTokenInfoSize)?
     };
-    let groups = {
-        // SAFETY: TOKEN_GROUPS is a variable-sized structure with GroupCount entries.
-        unsafe { core::slice::from_raw_parts((*token_groups).Groups.as_ptr(), group_count) }
-    };
+    // SAFETY: The buffer was returned by GetTokenInformation for TokenGroups.
+    let groups_ptr = unsafe { (*token_groups).Groups.as_ptr() };
+    // SAFETY: TOKEN_GROUPS is a variable-sized structure with GroupCount entries.
+    let groups = unsafe { core::slice::from_raw_parts(groups_ptr, group_count) };
     Ok(groups
         .iter()
         .filter_map(|group| {

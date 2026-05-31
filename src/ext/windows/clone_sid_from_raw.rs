@@ -50,6 +50,11 @@ unsafe fn raw_sid_bytes<'a>(raw: PSID) -> &'a [u8] {
     unsafe { slice::from_raw_parts(raw.cast(), len as usize) }
 }
 
+#[allow(
+    clippy::indexing_slicing,
+    clippy::multiple_unsafe_ops_per_block,
+    reason = "The unsafe trait contract guarantees the raw SID byte layout and length"
+)]
 unsafe fn stack_sid_from_raw_bytes(bytes: &[u8]) -> StackSid {
     let mut identifier_authority = [0_u8; 6];
     // SAFETY: The trait contract requires `bytes` to contain a valid SID.
@@ -82,6 +87,11 @@ unsafe fn stack_sid_from_raw_bytes(bytes: &[u8]) -> StackSid {
 // SAFETY: SecurityIdentifier copies the SID bytes into owned heap storage.
 unsafe impl CloneSidFromRaw for SecurityIdentifier {
     #[inline]
+    #[allow(
+        clippy::option_if_let_else,
+        clippy::use_self,
+        reason = "The explicit match keeps the unreachable invalid-SID path documented"
+    )]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
         match SecurityIdentifier::from_bytes(unsafe { raw_sid_bytes(raw) }) {
@@ -97,6 +107,10 @@ unsafe impl CloneSidFromRaw for SecurityIdentifier {
 // SAFETY: StackSid copies the SID bytes into owned stack storage.
 unsafe impl CloneSidFromRaw for StackSid {
     #[inline]
+    #[allow(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "The nested call preserves the clone-from-raw flow"
+    )]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
         unsafe { stack_sid_from_raw_bytes(raw_sid_bytes(raw)) }
