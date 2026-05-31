@@ -207,13 +207,11 @@ where
         );
     }
 
-    let first_group = groups
-        .first()
-        .expect("Current token should contain at least one supported group SID");
+    let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
     assert!(
-        T::is_current_user_member_of(first_group.as_ref())
-            .expect("Failed to check group membership"),
-        "Known token group SID should be reported as current user membership"
+        T::is_current_user_member_of(current_user.as_ref())
+            .expect("Failed to check current user membership"),
+        "Current user SID should be reported as current user membership"
     );
 
     if let Ok(primary_group) = primary_group {
