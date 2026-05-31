@@ -107,7 +107,11 @@ where
     let user = current_user_from_powershell();
     let sid = T::get_current_user_sid().expect("Failed to get current user SID");
 
-    assert_eq!(sid.as_ref(), user.sid.as_sid(), "SID does not match expected value");
+    assert_eq!(
+        sid.as_ref(),
+        user.sid.as_sid(),
+        "SID does not match expected value"
+    );
 
     let sid_lookup = sid_lookup_account(sid.as_ref());
 
@@ -219,7 +223,10 @@ where
         .map(|s| s.as_sid().to_string())
         .collect::<Vec<_>>();
     actual.sort_unstable();
-    assert_eq!(expected, actual, "group SIDs do not match the current token");
+    assert_eq!(
+        expected, actual,
+        "group SIDs do not match the current token"
+    );
     for group in &groups {
         assert_valid_sid(group.as_ref(), "group SID");
     }
