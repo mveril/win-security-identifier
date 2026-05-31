@@ -15,8 +15,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -D warnings
-      # Optionnel: force a specific crate name if your workspace has multiple crates to release.
-      # CRATE_NAME: win-security-identifier
+      RELEASE_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -42,7 +41,7 @@ jobs:
         id: extract_version
         shell: bash
         run: |
-          BRANCH_NAME="${{ github.ref_name }}"
+          BRANCH_NAME="${RELEASE_BRANCH}"
           RAW_VERSION="${BRANCH_NAME#release/}"
 
           if [[ -z "$RAW_VERSION" ]]; then
@@ -67,57 +66,44 @@ jobs:
           echo "EXPECTED_VERSION=$EXPECTED_VERSION" >> "$GITHUB_ENV"
           echo "✅ Expected version from branch: $EXPECTED_VERSION"
 
-      - name: Detect crate name from Cargo.toml (if not provided)
-        id: crate_name
+      - name: Compare publishable workspace crate versions with expected version
         shell: bash
         run: |
-          if [[ -n "${CRATE_NAME:-}" ]]; then
-            NAME="$CRATE_NAME"
-          else
-            # Extract the package.name from the root Cargo.toml (simple parser for standard cases)
-            if [[ -f Cargo.toml ]]; then
-              NAME="$(awk -F'=' '/^\s*name\s*=/ {gsub(/[" ]/, "", $2); print $2; exit}' Cargo.toml)"
-            fi
-          fi
-
-          if [[ -z "$NAME" ]]; then
-            echo "❌ ERROR: Could not detect crate name. Set env CRATE_NAME or ensure root Cargo.toml has [package].name."
-            exit 1
-          fi
-
-          echo "CRATE_NAME=$NAME" >> "$GITHUB_ENV"
-          echo "📦 Crate: $NAME"
-
-      - name: Compare crate version with expected version
-        shell: bash
-        run: |
-          # Ensure lockfile exists for commands relying on resolution; not strictly required but harmless.
           cargo generate-lockfile || true
 
-          # Get current crate version via cargo pkgid (format: path#name:version or name#version)
-          PKGID_OUTPUT="$(cargo pkgid -p "$CRATE_NAME" 2>/dev/null || true)"
-          if [[ -z "$PKGID_OUTPUT" ]]; then
-            echo "❌ ERROR: 'cargo pkgid -p $CRATE_NAME' returned nothing. Check the crate name."
-            exit 1
-          fi
+          cargo metadata --format-version 1 --no-deps > metadata.json
 
-          # Extract '#...:version' or '#version'
-          if [[ "$PKGID_OUTPUT" =~ \#([^:]+:)?([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z\.-]+)?)$ ]]; then
-            CURRENT_VERSION="${BASH_REMATCH[2]}"
-          else
-            echo "❌ ERROR: Failed to parse version from cargo pkgid output: $PKGID_OUTPUT"
-            exit 1
-          fi
+          python - <<'PY'
+          import json
+          import os
+          import sys
 
-          echo "Detected crate version: $CURRENT_VERSION"
-          echo "Expected version:       $EXPECTED_VERSION"
+          expected = os.environ["EXPECTED_VERSION"]
 
-          if [[ "$CURRENT_VERSION" != "$EXPECTED_VERSION" ]]; then
-            echo "❌ ERROR: Crate version '$CURRENT_VERSION' does not match expected '$EXPECTED_VERSION'."
-            exit 1
-          fi
+          with open("metadata.json", encoding="utf-8") as fh:
+              metadata = json.load(fh)
 
-          echo "✅ Versions match."
+          workspace_members = set(metadata["workspace_members"])
+          errors = []
+
+          for package in metadata["packages"]:
+              if package["id"] not in workspace_members:
+                  continue
+              if package.get("publish") is False:
+                  continue
+              if package["version"] != expected:
+                  errors.append(
+                      f"Crate '{package['name']}' version '{package['version']}' "
+                      f"does not match expected '{expected}'."
+                  )
+
+          if errors:
+              for error in errors:
+                  print(f"❌ ERROR: {error}", file=sys.stderr)
+              sys.exit(1)
+
+          print("✅ All publishable workspace crate versions match.")
+          PY
 
   publish-dry-run:
     needs: version-check
