@@ -207,6 +207,9 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
         let primary_group = buffer.as_ptr().cast::<TOKEN_PRIMARY_GROUP>();
         // SAFETY: The buffer was returned by GetTokenInformation for TokenPrimaryGroup.
         let raw_sid = unsafe { (*primary_group).PrimaryGroup };
+        if !is_supported_sid(raw_sid) {
+            return Err(TokenError::InvalidTokenInfoSize);
+        }
         // SAFETY: `raw_sid` points into `buffer`, which stays alive until after
         // `clone_sid_from_raw` returns.
         Ok(unsafe { Self::clone_sid_from_raw(raw_sid) })
