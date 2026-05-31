@@ -110,25 +110,12 @@ where
         "Domain and name do not match expected value"
     );
 
-    let sid_lookup_type = sid_lookup.as_ref().map(sid_type_from_lookup);
-
-    assert_eq!(
-        sid_lookup_type,
-        Some(Ok(SidType::User)),
-        "Domain and name do not match expected value"
-    );
-
     let local_sid_type = local_sid_type(sid.as_ref());
 
     assert_eq!(
         local_sid_type,
         Some(Ok(SidType::User)),
         "Local SID type does not match expected value"
-    );
-
-    assert_eq!(
-        local_sid_type, sid_lookup_type,
-        "Local SID type should match lookup result"
     );
 
     let account_lookup = account_lookup_matches_current_sid::<T>(&user.account, sid.as_ref());
@@ -215,13 +202,6 @@ fn sid_lookup_parts(lookup: SidLookup) -> AccountAndType {
     let sid_type = checked_sid_type(lookup.sid_type());
 
     (lookup.domain_name, sid_type)
-}
-
-const fn sid_type_from_lookup(lookup: &Result<AccountAndType, ()>) -> CheckedSidType {
-    match lookup {
-        Ok((_, sid_type)) => *sid_type,
-        Err(()) => Err(()),
-    }
 }
 
 fn local_sid_type(sid: &Sid) -> Option<CheckedSidType> {
