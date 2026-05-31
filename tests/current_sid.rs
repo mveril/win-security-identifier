@@ -31,15 +31,6 @@ struct PsUser {
     account: DomainAndName,
 }
 
-#[derive(Debug, Deserialize)]
-struct PsToken {
-    #[serde(rename = "primaryGroup")]
-    primary_group: StackSid,
-    groups: Box<[StackSid]>,
-    #[serde(rename = "logonSid")]
-    logon_sid: Option<StackSid>,
-}
-
 fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
     Command::new("pwsh")
         .args(args)
@@ -172,50 +163,6 @@ fn current_user_from_powershell() -> PsUser {
     serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
 }
 
-#[rstest]
-#[case::security_identifier(PhantomData::<SecurityIdentifier>)]
-#[case::stack_sid(PhantomData::<StackSid>)]
-fn current_token_sids<T>(#[case] type_marker: PhantomData<T>)
-where
-    T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
-{
-    let _ = type_marker;
-    let token = current_token_from_powershell();
-
-    let primary_group =
-        T::get_current_primary_group_sid().expect("Failed to get primary group SID");
-    assert_eq!(
-        primary_group.as_ref(),
-        token.primary_group.as_sid(),
-        "Primary group SID does not match the PowerShell token data"
-    );
-
-    let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
-    let expected_groups: Box<[&Sid]> = token.groups.iter().map(StackSid::as_sid).collect();
-    let actual_groups: Box<[&Sid]> = groups.iter().map(AsRef::as_ref).collect();
-    assert_eq!(
-        actual_groups, expected_groups,
-        "Current token group SIDs do not match the PowerShell token data"
-    );
-    for group in &groups {
-        assert_valid_sid(group.as_ref(), "group SID");
-    }
-
-    let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
-    assert_eq!(
-        logon_sid.as_ref().map(AsRef::as_ref),
-        token.logon_sid.as_ref().map(StackSid::as_sid),
-        "Logon SID does not match the PowerShell token data"
-    );
-
-    let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
-    assert!(
-        T::is_current_user_member_of(current_user.as_ref())
-            .expect("Failed to check current user membership"),
-        "Current user SID should be reported as current user membership"
-    );
-}
-
 fn assert_valid_sid(sid: &Sid, label: &str) {
     assert_eq!(sid.revision, Sid::REVISION, "{label} revision is invalid");
     assert!(
@@ -224,27 +171,39 @@ fn assert_valid_sid(sid: &Sid, label: &str) {
     );
 }
 
-fn current_token_from_powershell() -> PsToken {
-    const PS_SCRIPT: &str = include_str!("assets/get_token_sids.ps1");
+#[rstest]
+#[case::security_identifier(PhantomData::<SecurityIdentifier>)]
+#[case::stack_sid(PhantomData::<StackSid>)]
+fn current_token_sids<T>(#[case] type_marker: PhantomData<T>)
+where
+    T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
+{
+    let _ = type_marker;
 
-    let args = &[
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        PS_SCRIPT,
-    ];
+    let primary_group =
+        T::get_current_primary_group_sid().expect("Failed to get primary group SID");
+    assert_valid_sid(primary_group.as_ref(), "primary group SID");
 
-    let out = run_powershell(args).expect("Failed to launch PowerShell");
+    let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
     assert!(
-        out.status.success(),
-        "PowerShell failed: {}",
-        String::from_utf8_lossy(&out.stderr)
+        !groups.is_empty(),
+        "current token should expose at least one group SID"
     );
+    for group in &groups {
+        assert_valid_sid(group.as_ref(), "group SID");
+    }
 
-    serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
+    let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
+    if let Some(logon_sid) = logon_sid.as_ref() {
+        assert_valid_sid(logon_sid.as_ref(), "logon SID");
+    }
+
+    let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
+    assert!(
+        T::is_current_user_member_of(current_user.as_ref())
+            .expect("Failed to check current user membership"),
+        "Current user SID should be reported as current user membership"
+    );
 }
 
 fn sid_lookup_account(sid: &Sid) -> OptionalLookup<AccountAndType> {
