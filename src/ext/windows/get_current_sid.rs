@@ -10,8 +10,9 @@ pub use token_error::TokenError;
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
     Security::{
-        GetTokenInformation, SECURITY_MAX_SID_SIZE, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS,
-        TOKEN_PRIMARY_GROUP, TOKEN_QUERY, TOKEN_USER, TokenGroups, TokenPrimaryGroup, TokenUser,
+        GetTokenInformation, IsValidSid, SECURITY_MAX_SID_SIZE, TOKEN_GROUPS,
+        TOKEN_INFORMATION_CLASS, TOKEN_PRIMARY_GROUP, TOKEN_QUERY, TOKEN_USER, TokenGroups,
+        TokenPrimaryGroup, TokenUser,
     },
     System::{
         SystemServices::{SE_GROUP_LOGON_ID, SE_TOKEN_USER},
@@ -345,6 +346,9 @@ where
     Ok(groups
         .iter()
         .filter_map(|group| {
+            if !is_supported_sid(group.Sid) {
+                return None;
+            }
             // SAFETY: TOKEN_GROUPS contains valid SID pointers for the lifetime of the buffer.
             let sid = unsafe { Sid::from_raw(group.Sid) };
             let attributes = TokenGroupAttributes::from_raw(group.Attributes);
@@ -356,6 +360,15 @@ where
             }
         })
         .collect())
+}
+
+fn is_supported_sid(raw_sid: windows_sys::Win32::Security::PSID) -> bool {
+    if raw_sid.is_null() {
+        return false;
+    }
+    // SAFETY: `raw_sid` comes from a Windows TOKEN_GROUPS entry. IsValidSid
+    // validates the pointed-to SID before the crate interprets its byte layout.
+    unsafe { IsValidSid(raw_sid) != 0 }
 }
 
 #[cfg(test)]
