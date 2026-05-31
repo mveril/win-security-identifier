@@ -137,6 +137,42 @@ jobs:
           echo "version=${VERSION_FULL}" >> "$GITHUB_ENV"
           echo "prerelease=${PRERELEASE}" >> "$GITHUB_ENV"
 
+      - name: Verify workspace versions match tag
+        shell: bash
+        run: |
+          cargo generate-lockfile || true
+          cargo metadata --format-version 1 --no-deps > metadata.json
+
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          expected = os.environ["version"]
+
+          with open("metadata.json", encoding="utf-8") as fh:
+              metadata = json.load(fh)
+
+          workspace_members = set(metadata["workspace_members"])
+          errors = []
+
+          for package in metadata["packages"]:
+              if package["id"] not in workspace_members:
+                  continue
+              if package.get("publish") is False:
+                  continue
+              if package["version"] != expected:
+                  errors.append(
+                      f"Publishable crate '{package['name']}' has version "
+                      f"'{package['version']}', expected '{expected}'."
+                  )
+
+          if errors:
+              for error in errors:
+                  print(f"ERROR: {error}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
       - name: Sanity checks (fmt, clippy, build, test)
         shell: bash
         run: |
@@ -145,13 +181,19 @@ jobs:
           cargo build --workspace --all-features
           cargo test --workspace --all-features --all-targets -- --nocapture
 
+      - name: Cargo publish dry-run (crates.io)
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo publish --workspace --dry-run --locked
+
       - name: Cargo publish (crates.io)
         shell: bash
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          # Publish prereleases and stable alike (SemVer prerelease is valid on crates.io)
-          cargo publish --workspace
+          cargo publish --workspace --locked
 
       - name: Create GitHub Release
         id: ghrel

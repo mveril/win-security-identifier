@@ -93,7 +93,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       # Stable : tests + coverage with cargo-llvm-cov
-      - name: Run tests with coverage (Windos and Linux only)
+      - name: Run tests with coverage (Windows and Linux only)
         if: ${{ runner.os != 'macOS' }}
         run: |
           cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
@@ -103,12 +103,12 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: codecov.json
-          flags: ${{ runner.os }}-${{matrix.toolchain}}
+          flags: ${{ runner.os == 'Windows' && format('windows-{0}', matrix.toolchain) || format('linux-{0}', matrix.toolchain) }}
           fail_ci_if_error: true
 
       # -------- Docs Windows --------
       - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
-        if: ${{ runner.os == 'windows' }}
+        if: ${{ runner.os == 'Windows' }}
         run: cargo doc --workspace --all-features --no-deps
   
   no-std:
@@ -174,25 +174,25 @@ jobs:
           echo "== ALLOC_MATRIX =="
           printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | table"
 
-      - name: "no_std ${{ inputs.kind }}: Check" 
+      - name: "no_std core: Check"
         uses: ./.github/actions/no_std/check-nostd
         with:
           kind: core
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
 
-      - name: "no_std ${{ inputs.kind }}: build" 
+      - name: "no_std core: build"
         uses: ./.github/actions/no_std/build-nostd
         with:
           kind: core
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
 
-      - name: "no_std ${{ inputs.kind }}: Check" 
+      - name: "no_std alloc: Check"
         uses: ./.github/actions/no_std/check-nostd
         with:
           kind: alloc
           matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
 
-      - name: "no_std ${{ inputs.kind }}: build" 
+      - name: "no_std alloc: build"
         uses: ./.github/actions/no_std/build-nostd
         with:
           kind: alloc

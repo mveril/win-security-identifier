@@ -1,7 +1,7 @@
 codecov:
   require_ci_to_pass: yes
   notify:
-    after_n_builds: 3  # linux-stable + linux-nightly + windows-stable
+    after_n_builds: 4  # linux-stable + linux-nightly + windows-stable + windows-nightly
     wait_for_ci: yes
 
 coverage:
