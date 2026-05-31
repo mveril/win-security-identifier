@@ -1,5 +1,4 @@
 use crate::{SecurityIdentifier, SidIdentifierAuthority, StackSid, sid::Sid};
-use core::hint::unreachable_unchecked;
 use core::ptr;
 use core::slice;
 use windows_sys::Win32::Security::GetLengthSid;
@@ -87,20 +86,10 @@ unsafe fn stack_sid_from_raw_bytes(bytes: &[u8]) -> StackSid {
 // SAFETY: SecurityIdentifier copies the SID bytes into owned heap storage.
 unsafe impl CloneSidFromRaw for SecurityIdentifier {
     #[inline]
-    #[allow(
-        clippy::option_if_let_else,
-        clippy::use_self,
-        reason = "The explicit match keeps the unreachable invalid-SID path documented"
-    )]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        match SecurityIdentifier::from_bytes(unsafe { raw_sid_bytes(raw) }) {
-            Ok(sid) => sid,
-            Err(_) => {
-                // SAFETY: The trait contract requires a valid SID pointer.
-                unsafe { unreachable_unchecked() }
-            }
-        }
+        let stack_sid = unsafe { clone_stack_sid_from_raw(raw) };
+        Self::from(stack_sid.as_sid())
     }
 }
 
@@ -113,8 +102,17 @@ unsafe impl CloneSidFromRaw for StackSid {
     )]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        unsafe { stack_sid_from_raw_bytes(raw_sid_bytes(raw)) }
+        unsafe { clone_stack_sid_from_raw(raw) }
     }
+}
+
+#[allow(
+    clippy::multiple_unsafe_ops_per_block,
+    reason = "The raw SID is read once and copied into owned stack storage"
+)]
+unsafe fn clone_stack_sid_from_raw(raw: PSID) -> StackSid {
+    // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
+    unsafe { stack_sid_from_raw_bytes(raw_sid_bytes(raw)) }
 }
 
 // SAFETY: Box<Sid> copies the SID bytes into owned heap storage.
