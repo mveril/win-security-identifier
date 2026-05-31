@@ -5,8 +5,10 @@
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 #![allow(clippy::std_instead_of_core)]
 
+use core::marker::PhantomData;
 use core::ptr;
 use proptest::prelude::*;
+use rstest::rstest;
 use serde::Deserialize;
 use std::{
     fmt::Debug,
@@ -29,6 +31,15 @@ struct PsUser {
     account: DomainAndName,
 }
 
+#[derive(Debug, Deserialize)]
+struct PsToken {
+    #[serde(rename = "primaryGroup")]
+    primary_group: StackSid,
+    groups: Box<[StackSid]>,
+    #[serde(rename = "logonSid")]
+    logon_sid: Option<StackSid>,
+}
+
 fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
     Command::new("pwsh")
         .args(args)
@@ -42,26 +53,6 @@ fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
                 .stderr(Stdio::piped())
                 .output()
         })
-}
-
-#[test]
-fn security_identifier_get_current_user_sid_and_account() {
-    current_user_sid_and_account::<SecurityIdentifier>();
-}
-
-#[test]
-fn stack_sid_get_current_user_sid_and_account() {
-    current_user_sid_and_account::<StackSid>();
-}
-
-#[test]
-fn security_identifier_get_current_token_sids() {
-    current_token_sids::<SecurityIdentifier>();
-}
-
-#[test]
-fn stack_sid_get_current_token_sids() {
-    current_token_sids::<StackSid>();
 }
 
 proptest! {
@@ -107,8 +98,10 @@ fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
             .expect("generated SID parts must be valid")
         })
 }
-
-fn current_user_sid_and_account<T>()
+#[rstest]
+#[case::security_identifier(PhantomData::<SecurityIdentifier>)]
+#[case::stack_sid(PhantomData::<StackSid>)]
+fn current_user_sid_and_account<T>(#[case] _type_marker: PhantomData<T>)
 where
     T: CloneSidFromRaw + LookupAccountName + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
@@ -178,34 +171,40 @@ fn current_user_from_powershell() -> PsUser {
     serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
 }
 
-fn current_token_sids<T>()
+#[rstest]
+#[case::security_identifier(PhantomData::<SecurityIdentifier>)]
+#[case::stack_sid(PhantomData::<StackSid>)]
+fn current_token_sids<T>(#[case] _type_marker: PhantomData<T>)
 where
     T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
 {
-    let primary_group = T::get_current_primary_group_sid();
-    if let Ok(primary_group) = &primary_group {
-        assert_valid_sid(primary_group.as_ref(), "primary group SID");
-    }
+    let token = current_token_from_powershell();
+
+    let primary_group =
+        T::get_current_primary_group_sid().expect("Failed to get primary group SID");
+    assert_eq!(
+        primary_group.as_ref(),
+        token.primary_group.as_sid(),
+        "Primary group SID does not match the PowerShell token data"
+    );
 
     let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
-    assert!(
-        !groups.is_empty(),
-        "Current token should contain at least one supported group SID"
+    let expected_groups: Box<[&Sid]> = token.groups.iter().map(StackSid::as_sid).collect();
+    let actual_groups: Box<[&Sid]> = groups.iter().map(AsRef::as_ref).collect();
+    assert_eq!(
+        actual_groups, expected_groups,
+        "Current token group SIDs do not match the PowerShell token data"
     );
     for group in &groups {
         assert_valid_sid(group.as_ref(), "group SID");
     }
 
     let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
-    if let Some(logon_sid) = logon_sid {
-        assert_valid_sid(logon_sid.as_ref(), "logon SID");
-        assert!(
-            groups
-                .iter()
-                .any(|group| group.as_ref() == logon_sid.as_ref()),
-            "Logon SID should be present in the current token group SIDs"
-        );
-    }
+    assert_eq!(
+        logon_sid.as_ref().map(AsRef::as_ref),
+        token.logon_sid.as_ref().map(StackSid::as_sid),
+        "Logon SID does not match the PowerShell token data"
+    );
 
     let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
     assert!(
@@ -213,17 +212,6 @@ where
             .expect("Failed to check current user membership"),
         "Current user SID should be reported as current user membership"
     );
-
-    if let Ok(primary_group) = primary_group {
-        assert!(
-            T::is_current_user_member_of(primary_group.as_ref())
-                .expect("Failed to check primary group membership")
-                || groups
-                    .iter()
-                    .all(|group| group.as_ref() != primary_group.as_ref()),
-            "Primary group membership should be true when the primary group is also a token group"
-        );
-    }
 }
 
 fn assert_valid_sid(sid: &Sid, label: &str) {
@@ -232,6 +220,29 @@ fn assert_valid_sid(sid: &Sid, label: &str) {
         !sid.sub_authorities().is_empty(),
         "{label} should contain at least one sub-authority"
     );
+}
+
+fn current_token_from_powershell() -> PsToken {
+    const PS_SCRIPT: &str = include_str!("assets/get_token_sids.ps1");
+
+    let args = &[
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        PS_SCRIPT,
+    ];
+
+    let out = run_powershell(args).expect("Failed to launch PowerShell");
+    assert!(
+        out.status.success(),
+        "PowerShell failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
 }
 
 fn sid_lookup_account(sid: &Sid) -> OptionalLookup<AccountAndType> {
