@@ -3,9 +3,9 @@ mod token_error;
 use super::CloneSidFromRaw;
 use core::mem::{MaybeUninit, align_of, size_of};
 use core::ptr;
+use smallvec::SmallVec;
 use std::boxed::Box;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
-use std::vec::Vec;
 pub use token_error::TokenError;
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
@@ -20,7 +20,6 @@ use windows_sys::Win32::{
 };
 
 const MAX_TOKEN_USER_BUFFER_SIZE: usize = size_of::<TOKEN_USER>() + SECURITY_MAX_SID_SIZE as usize;
-const LOGON_GROUP_ATTRIBUTE: u32 = SE_GROUP_LOGON_ID as u32;
 const _: () = assert!(
     size_of::<SE_TOKEN_USER>() >= MAX_TOKEN_USER_BUFFER_SIZE,
     "SE_TOKEN_USER must fit TOKEN_USER plus the largest Windows SID"
@@ -29,6 +28,65 @@ const _: () = assert!(
     align_of::<SE_TOKEN_USER>() >= align_of::<TOKEN_USER>(),
     "SE_TOKEN_USER buffer must satisfy TOKEN_USER alignment"
 );
+
+type TokenInformationStorage = SmallVec<[MaybeUninit<usize>; 64]>;
+
+struct TokenInformationBuffer {
+    storage: TokenInformationStorage,
+}
+
+impl TokenInformationBuffer {
+    fn with_byte_capacity(capacity: usize) -> Self {
+        let word_count = capacity.div_ceil(size_of::<usize>());
+        Self {
+            storage: TokenInformationStorage::with_capacity(word_count),
+        }
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.storage.as_mut_ptr().cast()
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self.storage.as_ptr().cast()
+    }
+
+    unsafe fn set_len(&mut self, len: usize) {
+        let word_count = len.div_ceil(size_of::<usize>());
+        // SAFETY: `MaybeUninit<usize>` does not require initialized contents.
+        unsafe {
+            self.storage.set_len(word_count);
+        }
+    }
+}
+
+const _: () = assert!(
+    align_of::<usize>() >= align_of::<TOKEN_PRIMARY_GROUP>(),
+    "TokenInformationBuffer must satisfy TOKEN_PRIMARY_GROUP alignment"
+);
+const _: () = assert!(
+    align_of::<usize>() >= align_of::<TOKEN_GROUPS>(),
+    "TokenInformationBuffer must satisfy TOKEN_GROUPS alignment"
+);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct TokenGroupAttributes(u32);
+
+impl TokenGroupAttributes {
+    const LOGON_ID: Self = Self(SE_GROUP_LOGON_ID as u32);
+
+    const fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+
+    const fn is_logon_id(self) -> bool {
+        self.contains(Self::LOGON_ID)
+    }
+}
 
 pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
     /// Retrieves the current user's SID from the process token (Windows only).
@@ -152,7 +210,7 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
     fn get_current_user_group_sids() -> Result<Box<[Self]>, TokenError> {
-        current_token_group_entries()
+        current_token_group_entries(|_, _| true)
             .map(|groups| groups.into_iter().map(|(sid, _)| sid).collect::<Box<[_]>>())
     }
 
@@ -161,11 +219,8 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
     fn get_current_logon_sid() -> Result<Option<Self>, TokenError> {
-        let groups = current_token_group_entries()?;
-        Ok(groups
-            .into_iter()
-            .find(|(_, attributes)| (*attributes & LOGON_GROUP_ATTRIBUTE) == LOGON_GROUP_ATTRIBUTE)
-            .map(|(sid, _)| sid))
+        let groups = current_token_group_entries(|_, attributes| attributes.is_logon_id())?;
+        Ok(groups.into_iter().next().map(|(sid, _)| sid))
     }
 
     /// Checks whether the given SID is present in the current user SID or token group SIDs.
@@ -177,9 +232,8 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
         if current_user.as_ref() == sid {
             return Ok(true);
         }
-        Ok(Self::get_current_user_group_sids()?
-            .iter()
-            .any(|group| group.as_ref() == sid))
+        current_token_group_entries::<Self>(|group_sid, _| group_sid == sid)
+            .map(|groups| !groups.is_empty())
     }
 }
 
@@ -207,7 +261,7 @@ fn open_current_process_token() -> Result<OwnedHandle, TokenError> {
 fn query_token_information(
     token_handle: RawHandle,
     token_information_class: TOKEN_INFORMATION_CLASS,
-) -> Result<Vec<u8>, TokenError> {
+) -> Result<TokenInformationBuffer, TokenError> {
     let mut size: u32 = 0;
     // SAFETY: Standard size-query pattern with null buffer and 0 length.
     let first_ok = unsafe {
@@ -229,7 +283,7 @@ fn query_token_information(
     }
 
     let len = usize::try_from(size).map_err(|_| TokenError::InvalidTokenInfoSize)?;
-    let mut buffer = Vec::<u8>::with_capacity(len);
+    let mut buffer = TokenInformationBuffer::with_byte_capacity(len);
     // SAFETY: The buffer has capacity for the requested token information.
     let second_ok = unsafe {
         GetTokenInformation(
@@ -256,7 +310,9 @@ fn query_token_information(
     Ok(buffer)
 }
 
-fn current_token_group_entries<T>() -> Result<Vec<(T, u32)>, TokenError>
+fn current_token_group_entries<T>(
+    mut filter: impl FnMut(&Sid, TokenGroupAttributes) -> bool,
+) -> Result<Box<[(T, TokenGroupAttributes)]>, TokenError>
 where
     T: CloneSidFromRaw,
 {
@@ -274,10 +330,16 @@ where
     };
     Ok(groups
         .iter()
-        .map(|group| {
+        .filter_map(|group| {
             // SAFETY: TOKEN_GROUPS contains valid SID pointers for the lifetime of the buffer.
-            let sid = unsafe { T::clone_sid_from_raw(group.Sid) };
-            (sid, group.Attributes)
+            let sid = unsafe { Sid::from_raw(group.Sid) };
+            let attributes = TokenGroupAttributes::from_raw(group.Attributes);
+            if filter(sid, attributes) {
+                // SAFETY: TOKEN_GROUPS contains valid SID pointers for the lifetime of the buffer.
+                Some((unsafe { T::clone_sid_from_raw(group.Sid) }, attributes))
+            } else {
+                None
+            }
         })
         .collect())
 }

@@ -29,6 +29,14 @@ struct PsUser {
     account: DomainAndName,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PsTokenSids {
+    primary_group: StackSid,
+    groups: Box<[StackSid]>,
+    logon_sid: Option<StackSid>,
+}
+
 fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
     Command::new("pwsh")
         .args(args)
@@ -52,6 +60,16 @@ fn security_identifier_get_current_user_sid_and_account() {
 #[test]
 fn stack_sid_get_current_user_sid_and_account() {
     current_user_sid_and_account::<StackSid>();
+}
+
+#[test]
+fn security_identifier_get_current_token_sids() {
+    current_token_sids::<SecurityIdentifier>();
+}
+
+#[test]
+fn stack_sid_get_current_token_sids() {
+    current_token_sids::<StackSid>();
 }
 
 proptest! {
@@ -147,6 +165,74 @@ where
 
 fn current_user_from_powershell() -> PsUser {
     const PS_SCRIPT: &str = include_str!("assets/get_sid_account.ps1");
+
+    let args = &[
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        PS_SCRIPT,
+    ];
+
+    let out = run_powershell(args).expect("Failed to launch PowerShell");
+    assert!(
+        out.status.success(),
+        "PowerShell failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
+}
+
+fn current_token_sids<T>()
+where
+    T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
+{
+    let token = current_token_sids_from_powershell();
+
+    let primary_group =
+        T::get_current_primary_group_sid().expect("Failed to get current primary group SID");
+    assert_eq!(
+        primary_group.as_ref(),
+        token.primary_group.as_sid(),
+        "Primary group SID does not match PowerShell"
+    );
+
+    let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
+    assert_eq!(
+        groups.len(),
+        token.groups.len(),
+        "Group SID count does not match PowerShell"
+    );
+    assert!(
+        token.groups.iter().all(|expected| groups
+            .iter()
+            .any(|actual| actual.as_ref() == expected.as_sid())),
+        "Group SID list does not match PowerShell"
+    );
+
+    let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
+    assert_eq!(
+        logon_sid.as_ref().map(AsRef::as_ref),
+        token.logon_sid.as_ref().map(StackSid::as_sid),
+        "Logon SID does not match PowerShell"
+    );
+
+    let first_group = token
+        .groups
+        .first()
+        .expect("Current token should contain at least one group SID");
+    assert!(
+        T::is_current_user_member_of(first_group.as_sid())
+            .expect("Failed to check group membership"),
+        "Known token group SID should be reported as current user membership"
+    );
+}
+
+fn current_token_sids_from_powershell() -> PsTokenSids {
+    const PS_SCRIPT: &str = include_str!("assets/get_token_sids.ps1");
 
     let args = &[
         "-NoLogo",

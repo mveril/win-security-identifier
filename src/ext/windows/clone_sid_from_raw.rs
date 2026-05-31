@@ -1,4 +1,8 @@
-use crate::{SecurityIdentifier, StackSid, sid::Sid};
+use crate::{SecurityIdentifier, SidIdentifierAuthority, StackSid, sid::Sid};
+use core::hint::unreachable_unchecked;
+use core::ptr;
+use core::slice;
+use windows_sys::Win32::Security::GetLengthSid;
 use windows_sys::Win32::Security::PSID;
 
 /// A type that can safely clone a SID from a raw Windows pointer.
@@ -39,13 +43,54 @@ pub unsafe trait CloneSidFromRaw: Sized {
     unsafe fn clone_sid_from_raw(sid: PSID) -> Self;
 }
 
+unsafe fn raw_sid_bytes<'a>(raw: PSID) -> &'a [u8] {
+    // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
+    let len = unsafe { GetLengthSid(raw) };
+    // SAFETY: `raw` points to a valid SID with `len` initialized bytes.
+    unsafe { slice::from_raw_parts(raw.cast(), len as usize) }
+}
+
+unsafe fn stack_sid_from_raw_bytes(bytes: &[u8]) -> StackSid {
+    let mut identifier_authority = [0_u8; 6];
+    // SAFETY: The trait contract requires `bytes` to contain a valid SID.
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr().add(2), identifier_authority.as_mut_ptr(), 6);
+    }
+
+    // SAFETY: The trait contract requires `bytes` to contain a valid SID.
+    let sub_authority_count = unsafe { *bytes.as_ptr().add(1) as usize };
+    let mut sub_authorities = [0_u32; parsing::MAX_SUBAUTHORITY_COUNT as usize];
+    let mut index = 0;
+    while index < sub_authority_count {
+        let offset = 8 + (index * size_of::<u32>());
+        // SAFETY: The trait contract requires `bytes` to contain a valid SID,
+        // and Windows stores SID sub-authorities as little-endian u32 values.
+        sub_authorities[index] =
+            u32::from_le(unsafe { ptr::read_unaligned(bytes.as_ptr().add(offset).cast::<u32>()) });
+        index += 1;
+    }
+
+    // SAFETY: The trait contract requires a valid SID, so the count is valid.
+    unsafe {
+        StackSid::new_unchecked(
+            SidIdentifierAuthority::new(identifier_authority),
+            sub_authorities.get_unchecked(..sub_authority_count),
+        )
+    }
+}
+
 // SAFETY: SecurityIdentifier copies the SID bytes into owned heap storage.
 unsafe impl CloneSidFromRaw for SecurityIdentifier {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        let sid = unsafe { Sid::from_raw(raw) };
-        sid.into()
+        match SecurityIdentifier::from_bytes(unsafe { raw_sid_bytes(raw) }) {
+            Ok(sid) => sid,
+            Err(_) => {
+                // SAFETY: The trait contract requires a valid SID pointer.
+                unsafe { unreachable_unchecked() }
+            }
+        }
     }
 }
 
@@ -54,8 +99,7 @@ unsafe impl CloneSidFromRaw for StackSid {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        let sid = unsafe { Sid::from_raw(raw) };
-        sid.into()
+        unsafe { stack_sid_from_raw_bytes(raw_sid_bytes(raw)) }
     }
 }
 
