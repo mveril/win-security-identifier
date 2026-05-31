@@ -101,10 +101,11 @@ fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
 #[rstest]
 #[case::security_identifier(PhantomData::<SecurityIdentifier>)]
 #[case::stack_sid(PhantomData::<StackSid>)]
-fn current_user_sid_and_account<T>(#[case] _type_marker: PhantomData<T>)
+fn current_user_sid_and_account<T>(#[case] type_marker: PhantomData<T>)
 where
     T: CloneSidFromRaw + LookupAccountName + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
+    let _ = type_marker;
     let user = current_user_from_powershell();
     let sid = T::get_current_user_sid().expect("Failed to get current user SID");
 
@@ -174,10 +175,11 @@ fn current_user_from_powershell() -> PsUser {
 #[rstest]
 #[case::security_identifier(PhantomData::<SecurityIdentifier>)]
 #[case::stack_sid(PhantomData::<StackSid>)]
-fn current_token_sids<T>(#[case] _type_marker: PhantomData<T>)
+fn current_token_sids<T>(#[case] type_marker: PhantomData<T>)
 where
     T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
 {
+    let _ = type_marker;
     let token = current_token_from_powershell();
 
     let primary_group =
