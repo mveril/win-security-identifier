@@ -86,13 +86,21 @@ unsafe fn stack_sid_from_raw(raw: PSID) -> StackSid {
     }
 }
 
+unsafe fn clone_from_raw_as<T>(raw: PSID) -> T
+where
+    for<'a> T: From<&'a Sid>,
+{
+    // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
+    let sid = unsafe { stack_sid_from_raw(raw) };
+    sid.as_sid().into()
+}
+
 // SAFETY: SecurityIdentifier copies the SID bytes into owned heap storage.
 unsafe impl CloneSidFromRaw for SecurityIdentifier {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        let sid = unsafe { stack_sid_from_raw(raw) };
-        sid.as_sid().into()
+        unsafe { clone_from_raw_as(raw) }
     }
 }
 
@@ -101,8 +109,7 @@ unsafe impl CloneSidFromRaw for StackSid {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        let sid = unsafe { stack_sid_from_raw(raw) };
-        sid.as_sid().into()
+        unsafe { clone_from_raw_as(raw) }
     }
 }
 
@@ -111,7 +118,6 @@ unsafe impl CloneSidFromRaw for Box<Sid> {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        let sid = unsafe { stack_sid_from_raw(raw) };
-        sid.as_sid().into()
+        unsafe { clone_from_raw_as(raw) }
     }
 }
