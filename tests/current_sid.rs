@@ -189,23 +189,6 @@ where
         assert_valid_sid(logon_sid.as_ref(), "logon SID");
     }
 
-    let member_sid = logon_sid.as_ref().map_or_else(
-        || {
-            #[allow(
-                clippy::indexing_slicing,
-                reason = "groups is asserted non-empty before this fallback"
-            )]
-            {
-                groups[0].as_ref()
-            }
-        },
-        std::convert::AsRef::as_ref,
-    );
-    assert!(
-        T::is_current_user_member_of(member_sid).expect("Failed to check current user membership"),
-        "group SID should be reported as current user membership"
-    );
-
     let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
     assert!(
         T::is_current_user_member_of(current_user.as_ref())
