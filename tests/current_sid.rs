@@ -32,6 +32,7 @@ struct PsUser {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PsTokenSids {
     primary_group: StackSid,
     groups: Vec<StackSid>,
