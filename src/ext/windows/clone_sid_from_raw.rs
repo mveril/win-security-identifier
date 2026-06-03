@@ -54,7 +54,10 @@ unsafe fn raw_sid_bytes<'a>(raw: PSID) -> &'a [u8] {
     clippy::multiple_unsafe_ops_per_block,
     reason = "The unsafe trait contract guarantees the raw SID byte layout and length"
 )]
-unsafe fn stack_sid_from_raw_bytes(bytes: &[u8]) -> StackSid {
+unsafe fn stack_sid_from_raw(raw: PSID) -> StackSid {
+    // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
+    let bytes = unsafe { raw_sid_bytes(raw) };
+
     let mut identifier_authority = [0_u8; 6];
     // SAFETY: The trait contract requires `bytes` to contain a valid SID.
     unsafe {
@@ -88,31 +91,19 @@ unsafe impl CloneSidFromRaw for SecurityIdentifier {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        let stack_sid = unsafe { clone_stack_sid_from_raw(raw) };
-        Self::from(stack_sid.as_sid())
+        let sid = unsafe { stack_sid_from_raw(raw) };
+        sid.as_sid().into()
     }
 }
 
 // SAFETY: StackSid copies the SID bytes into owned stack storage.
 unsafe impl CloneSidFromRaw for StackSid {
     #[inline]
-    #[allow(
-        clippy::multiple_unsafe_ops_per_block,
-        reason = "The nested call preserves the clone-from-raw flow"
-    )]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        unsafe { clone_stack_sid_from_raw(raw) }
+        let sid = unsafe { stack_sid_from_raw(raw) };
+        sid.as_sid().into()
     }
-}
-
-#[allow(
-    clippy::multiple_unsafe_ops_per_block,
-    reason = "The raw SID is read once and copied into owned stack storage"
-)]
-unsafe fn clone_stack_sid_from_raw(raw: PSID) -> StackSid {
-    // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-    unsafe { stack_sid_from_raw_bytes(raw_sid_bytes(raw)) }
 }
 
 // SAFETY: Box<Sid> copies the SID bytes into owned heap storage.
@@ -120,6 +111,7 @@ unsafe impl CloneSidFromRaw for Box<Sid> {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        unsafe { SecurityIdentifier::clone_sid_from_raw(raw).into() }
+        let sid = unsafe { stack_sid_from_raw(raw) };
+        sid.as_sid().into()
     }
 }
