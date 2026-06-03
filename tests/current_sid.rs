@@ -5,8 +5,10 @@
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 #![allow(clippy::std_instead_of_core)]
 
+use core::marker::PhantomData;
 use core::ptr;
 use proptest::prelude::*;
+use rstest::rstest;
 use serde::Deserialize;
 use std::{
     fmt::Debug,
@@ -42,16 +44,6 @@ fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
                 .stderr(Stdio::piped())
                 .output()
         })
-}
-
-#[test]
-fn security_identifier_get_current_user_sid_and_account() {
-    current_user_sid_and_account::<SecurityIdentifier>();
-}
-
-#[test]
-fn stack_sid_get_current_user_sid_and_account() {
-    current_user_sid_and_account::<StackSid>();
 }
 
 proptest! {
@@ -97,15 +89,22 @@ fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
             .expect("generated SID parts must be valid")
         })
 }
-
-fn current_user_sid_and_account<T>()
+#[rstest]
+#[case::security_identifier(PhantomData::<SecurityIdentifier>)]
+#[case::stack_sid(PhantomData::<StackSid>)]
+fn current_user_sid_and_account<T>(#[case] type_marker: PhantomData<T>)
 where
     T: CloneSidFromRaw + LookupAccountName + AsRef<Sid> + PartialEq<StackSid> + Debug,
 {
+    let _ = type_marker;
     let user = current_user_from_powershell();
     let sid = T::get_current_user_sid().expect("Failed to get current user SID");
 
-    assert_eq!(sid, user.sid, "SID does not match expected value");
+    assert_eq!(
+        sid.as_ref(),
+        user.sid.as_sid(),
+        "SID does not match expected value"
+    );
 
     let sid_lookup = sid_lookup_account(sid.as_ref());
 
@@ -115,25 +114,12 @@ where
         "Domain and name do not match expected value"
     );
 
-    let sid_lookup_type = sid_lookup.as_ref().map(sid_type_from_lookup);
-
-    assert_eq!(
-        sid_lookup_type,
-        Some(Ok(SidType::User)),
-        "Domain and name do not match expected value"
-    );
-
     let local_sid_type = local_sid_type(sid.as_ref());
 
     assert_eq!(
         local_sid_type,
         Some(Ok(SidType::User)),
         "Local SID type does not match expected value"
-    );
-
-    assert_eq!(
-        local_sid_type, sid_lookup_type,
-        "Local SID type should match lookup result"
     );
 
     let account_lookup = account_lookup_matches_current_sid::<T>(&user.account, sid.as_ref());
@@ -168,6 +154,49 @@ fn current_user_from_powershell() -> PsUser {
     serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
 }
 
+fn assert_valid_sid(sid: &Sid, label: &str) {
+    assert_eq!(sid.revision, Sid::REVISION, "{label} revision is invalid");
+    assert!(
+        !sid.sub_authorities().is_empty(),
+        "{label} should contain at least one sub-authority"
+    );
+}
+
+#[rstest]
+#[case::security_identifier(PhantomData::<SecurityIdentifier>)]
+#[case::stack_sid(PhantomData::<StackSid>)]
+fn current_token_sids<T>(#[case] type_marker: PhantomData<T>)
+where
+    T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
+{
+    let _ = type_marker;
+
+    let primary_group =
+        T::get_current_primary_group_sid().expect("Failed to get primary group SID");
+    assert_valid_sid(primary_group.as_ref(), "primary group SID");
+
+    let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
+    assert!(
+        !groups.is_empty(),
+        "current token should expose at least one group SID"
+    );
+    for group in &groups {
+        assert_valid_sid(group.as_ref(), "group SID");
+    }
+
+    let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
+    if let Some(logon_sid) = logon_sid.as_ref() {
+        assert_valid_sid(logon_sid.as_ref(), "logon SID");
+    }
+
+    let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
+    assert!(
+        T::is_current_user_member_of(current_user.as_ref())
+            .expect("Failed to check current user membership"),
+        "current user SID should be reported as current user membership"
+    );
+}
+
 fn sid_lookup_account(sid: &Sid) -> OptionalLookup<AccountAndType> {
     sid.lookup_local_sid()
         .map(|lookup| lookup.map(sid_lookup_parts).map_err(drop_error))
@@ -177,13 +206,6 @@ fn sid_lookup_parts(lookup: SidLookup) -> AccountAndType {
     let sid_type = checked_sid_type(lookup.sid_type());
 
     (lookup.domain_name, sid_type)
-}
-
-const fn sid_type_from_lookup(lookup: &Result<AccountAndType, ()>) -> CheckedSidType {
-    match lookup {
-        Ok((_, sid_type)) => *sid_type,
-        Err(()) => Err(()),
-    }
 }
 
 fn local_sid_type(sid: &Sid) -> Option<CheckedSidType> {
