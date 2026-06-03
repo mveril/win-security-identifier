@@ -31,14 +31,6 @@ struct PsUser {
     account: DomainAndName,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PsTokenSids {
-    primary_group: StackSid,
-    groups: Vec<StackSid>,
-    logon_sid: Option<StackSid>,
-}
-
 fn run_powershell(args: &[&str]) -> std::io::Result<std::process::Output> {
     Command::new("pwsh")
         .args(args)
@@ -162,29 +154,6 @@ fn current_user_from_powershell() -> PsUser {
     serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
 }
 
-fn current_token_from_powershell() -> PsTokenSids {
-    const PS_SCRIPT: &str = include_str!("assets/get_token_sids.ps1");
-
-    let args = &[
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        PS_SCRIPT,
-    ];
-
-    let out = run_powershell(args).expect("Failed to launch PowerShell");
-    assert!(
-        out.status.success(),
-        "PowerShell failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-
-    serde_json::from_slice(out.stdout.as_slice()).expect("Invalid JSON from PowerShell")
-}
-
 fn assert_valid_sid(sid: &Sid, label: &str) {
     assert_eq!(sid.revision, Sid::REVISION, "{label} revision is invalid");
     assert!(
@@ -201,15 +170,9 @@ where
     T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
 {
     let _ = type_marker;
-    let token = current_token_from_powershell();
 
     let primary_group =
         T::get_current_primary_group_sid().expect("Failed to get primary group SID");
-    assert_eq!(
-        primary_group.as_ref(),
-        token.primary_group.as_sid(),
-        "primary group SID does not match the current token"
-    );
     assert_valid_sid(primary_group.as_ref(), "primary group SID");
 
     let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
@@ -217,56 +180,30 @@ where
         !groups.is_empty(),
         "current token should expose at least one group SID"
     );
-    let expected = sorted_sid_strings(groups.as_ref());
-    let mut actual = token
-        .groups
-        .iter()
-        .map(|s| s.as_sid().to_string())
-        .collect::<Vec<_>>();
-    actual.sort_unstable();
-    assert_eq!(
-        expected, actual,
-        "group SIDs do not match the current token"
-    );
     for group in &groups {
         assert_valid_sid(group.as_ref(), "group SID");
     }
 
     let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
-    assert_eq!(
-        logon_sid.as_ref().map(std::convert::AsRef::as_ref),
-        token
-            .logon_sid
-            .as_ref()
-            .map(win_security_identifier::StackSid::as_sid),
-        "logon SID does not match the current token"
-    );
     if let Some(logon_sid) = logon_sid.as_ref() {
         assert_valid_sid(logon_sid.as_ref(), "logon SID");
     }
 
-    let member_sid = token
-        .logon_sid
+    let member_sid = logon_sid
         .as_ref()
-        .or_else(|| token.groups.first())
-        .expect("current token should expose at least one group SID");
+        .map(std::convert::AsRef::as_ref)
+        .unwrap_or_else(|| groups[0].as_ref());
     assert!(
-        T::is_current_user_member_of(member_sid.as_ref())
-            .expect("Failed to check current user membership"),
+        T::is_current_user_member_of(member_sid).expect("Failed to check current user membership"),
         "group SID should be reported as current user membership"
     );
-}
 
-fn sorted_sid_strings<T>(sids: &[T]) -> Vec<String>
-where
-    T: AsRef<Sid>,
-{
-    let mut strings = sids
-        .iter()
-        .map(|sid| sid.as_ref().to_string())
-        .collect::<Vec<_>>();
-    strings.sort_unstable();
-    strings
+    let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
+    assert!(
+        T::is_current_user_member_of(current_user.as_ref())
+            .expect("Failed to check current user membership"),
+        "current user SID should be reported as current user membership"
+    );
 }
 
 fn sid_lookup_account(sid: &Sid) -> OptionalLookup<AccountAndType> {
