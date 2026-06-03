@@ -27,4 +27,8 @@ pub enum TokenError {
     /// Contains the Win32 error code returned by `GetLastError`.
     #[error("GetTokenInformation failed (error {0})")]
     GetTokenInfoFailed(u32),
+
+    /// A token information result used an unsupported or impossible size.
+    #[error("Token information size is invalid")]
+    InvalidTokenInfoSize,
 }

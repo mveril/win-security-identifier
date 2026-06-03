@@ -468,6 +468,13 @@ impl From<SecurityIdentifier> for Box<Sid> {
     }
 }
 
+impl From<&Sid> for Box<Sid> {
+    #[inline]
+    fn from(value: &Sid) -> Self {
+        SecurityIdentifier::from(value).into()
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in test")]
