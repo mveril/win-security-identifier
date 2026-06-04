@@ -13,8 +13,9 @@ impl Sid {
     /// Creates a reference to a `Sid` from a raw `PSID` pointer.
     ///
     /// # Safety
-    /// The `raw` pointer must point to a valid SID memory block with a correct layout
-    /// and live at least as long as the returned reference.
+    /// The `raw` pointer must be non-null, properly aligned for a `Sid`
+    /// reference, point to a valid SID memory block with a correct layout, and
+    /// live at least as long as the returned reference.
     #[inline]
     pub const unsafe fn from_raw<'a>(raw: PSID) -> &'a Self {
         // Safety: Same precondition as the public API.

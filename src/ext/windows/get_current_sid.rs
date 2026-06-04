@@ -4,9 +4,9 @@ use super::CloneSidFromRaw;
 use crate::utils::validate_sid_bytes_unaligned;
 use core::mem::{MaybeUninit, align_of, size_of};
 use core::ptr;
-use smallvec::SmallVec;
 use std::boxed::Box;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+use std::vec::Vec;
 pub use token_error::TokenError;
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
@@ -31,7 +31,7 @@ const _: () = assert!(
     "SE_TOKEN_USER buffer must satisfy TOKEN_USER alignment"
 );
 
-type TokenInformationStorage = SmallVec<[MaybeUninit<usize>; 64]>;
+type TokenInformationStorage = Vec<MaybeUninit<usize>>;
 
 struct TokenInformationBuffer {
     storage: TokenInformationStorage,
@@ -45,11 +45,11 @@ impl TokenInformationBuffer {
         }
     }
 
-    fn as_mut_ptr(&mut self) -> *mut u8 {
+    const fn as_mut_ptr(&mut self) -> *mut u8 {
         self.storage.as_mut_ptr().cast()
     }
 
-    fn as_ptr(&self) -> *const u8 {
+    const fn as_ptr(&self) -> *const u8 {
         self.storage.as_ptr().cast()
     }
 
