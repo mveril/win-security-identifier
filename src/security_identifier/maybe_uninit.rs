@@ -58,6 +58,11 @@ impl MaybeUninitSecurityIdentifier {
         self.sid_ptr()
     }
 
+    /// Returns a thin byte pointer to the start of the allocation.
+    pub const fn as_mut_byte_ptr(&self) -> *mut u8 {
+        self.base.as_ptr()
+    }
+
     /// Turn this uninitialized handle into a fully initialized `SecurityIdentifier`.
     ///
     /// After this call, the memory is owned by a `Box<Sid>` and this helper

@@ -194,16 +194,22 @@ impl StackSid {
         if let Err(err) = validate_sid_bytes_unaligned(bytes) {
             return Err(err);
         }
+        // SAFETY: `bytes` was validated immediately above.
+        Ok(unsafe { Self::from_valid_bytes_unchecked(bytes) })
+    }
+
+    #[inline]
+    pub(crate) const unsafe fn from_valid_bytes_unchecked(bytes: &[u8]) -> Self {
         let mut sid = MaybeUninit::<Self>::uninit();
-        // SAFETY: `StackSid` has max size of `Sid`
+        // SAFETY: The caller guarantees that `bytes` contains a valid SID
+        // binary layout. `StackSid` has the maximum size of a SID.
         unsafe {
             sid.as_mut_ptr()
                 .cast::<u8>()
                 .copy_from_nonoverlapping(bytes.as_ptr(), bytes.len());
         }
-        // SAFETY: Initialized by previous
-        let sid = unsafe { sid.assume_init() };
-        Ok(sid)
+        // SAFETY: Initialized by previous copy.
+        unsafe { sid.assume_init() }
     }
 }
 
@@ -445,6 +451,37 @@ mod tests {
             prop_assert_eq!(metadata(sid_ref), sid.sub_authority_count as usize);
         }
     }
+    #[test]
+    fn test_from_valid_bytes_unchecked_copies_valid_sid_bytes() {
+        let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+        let bytes = sid.as_bytes();
+        // SAFETY: `bytes` comes from a valid SID.
+        let stack_sid = unsafe { StackSid::from_valid_bytes_unchecked(bytes) };
+
+        assert_eq!(stack_sid.as_sid(), sid);
+        assert_eq!(stack_sid.as_bytes(), bytes);
+    }
+
+    #[test]
+    fn test_from_valid_bytes_unchecked_copies_unaligned_valid_sid_bytes() {
+        let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+        let bytes = sid.as_bytes();
+        let mut unaligned = [0_u8; 17];
+        let unaligned_bytes = {
+            let [_, tail @ ..] = &mut unaligned;
+            let (sid_bytes, _) = tail.split_at_mut(bytes.len());
+            sid_bytes.copy_from_slice(bytes);
+            &*sid_bytes
+        };
+
+        // SAFETY: `unaligned_bytes` contains a valid SID binary layout. This
+        // constructor copies bytes and does not create a `&Sid` from the source.
+        let stack_sid = unsafe { StackSid::from_valid_bytes_unchecked(unaligned_bytes) };
+
+        assert_eq!(stack_sid.as_sid(), sid);
+        assert_eq!(stack_sid.as_bytes(), bytes);
+    }
+
     #[test]
     #[expect(clippy::use_debug, reason = "test verifies Debug output")]
     fn test_debug() {

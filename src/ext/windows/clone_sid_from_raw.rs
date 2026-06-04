@@ -1,5 +1,4 @@
-use crate::{SecurityIdentifier, SidIdentifierAuthority, StackSid, sid::Sid};
-use core::ptr;
+use crate::{SecurityIdentifier, StackSid, sid::Sid};
 use core::slice;
 use windows_sys::Win32::Security::GetLengthSid;
 use windows_sys::Win32::Security::PSID;
@@ -49,50 +48,20 @@ unsafe fn raw_sid_bytes<'a>(raw: PSID) -> &'a [u8] {
     unsafe { slice::from_raw_parts(raw.cast(), len as usize) }
 }
 
-#[allow(
-    clippy::indexing_slicing,
-    clippy::multiple_unsafe_ops_per_block,
-    reason = "The unsafe trait contract guarantees the raw SID byte layout and length"
-)]
 unsafe fn stack_sid_from_raw(raw: PSID) -> StackSid {
     // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
     let bytes = unsafe { raw_sid_bytes(raw) };
-
-    let mut identifier_authority = [0_u8; 6];
-    // SAFETY: The trait contract requires `bytes` to contain a valid SID.
-    unsafe {
-        ptr::copy_nonoverlapping(bytes.as_ptr().add(2), identifier_authority.as_mut_ptr(), 6);
-    }
-
-    // SAFETY: The trait contract requires `bytes` to contain a valid SID.
-    let sub_authority_count = unsafe { *bytes.as_ptr().add(1) as usize };
-    let mut sub_authorities = [0_u32; parsing::MAX_SUBAUTHORITY_COUNT as usize];
-    let mut index = 0;
-    while index < sub_authority_count {
-        let offset = 8 + (index * size_of::<u32>());
-        // SAFETY: The trait contract requires `bytes` to contain a valid SID,
-        // and Windows stores SID sub-authorities as little-endian u32 values.
-        sub_authorities[index] =
-            u32::from_le(unsafe { ptr::read_unaligned(bytes.as_ptr().add(offset).cast::<u32>()) });
-        index += 1;
-    }
-
-    // SAFETY: The trait contract requires a valid SID, so the count is valid.
-    unsafe {
-        StackSid::new_unchecked(
-            SidIdentifierAuthority::new(identifier_authority),
-            sub_authorities.get_unchecked(..sub_authority_count),
-        )
-    }
+    // SAFETY: The caller guarantees that `raw` points to a valid SID, and
+    // `bytes` covers exactly that SID for the duration of this call.
+    unsafe { StackSid::from_valid_bytes_unchecked(bytes) }
 }
 
-unsafe fn clone_from_raw_as<T>(raw: PSID) -> T
-where
-    for<'a> T: From<&'a Sid>,
-{
+unsafe fn security_identifier_from_raw(raw: PSID) -> SecurityIdentifier {
     // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-    let sid = unsafe { stack_sid_from_raw(raw) };
-    sid.as_sid().into()
+    let bytes = unsafe { raw_sid_bytes(raw) };
+    // SAFETY: The caller guarantees that `raw` points to a valid SID, and
+    // `bytes` covers exactly that SID for the duration of this call.
+    unsafe { SecurityIdentifier::from_valid_bytes_unchecked(bytes) }
 }
 
 // SAFETY: SecurityIdentifier copies the SID bytes into owned heap storage.
@@ -100,7 +69,7 @@ unsafe impl CloneSidFromRaw for SecurityIdentifier {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        unsafe { clone_from_raw_as(raw) }
+        unsafe { security_identifier_from_raw(raw) }
     }
 }
 
@@ -109,7 +78,7 @@ unsafe impl CloneSidFromRaw for StackSid {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        unsafe { clone_from_raw_as(raw) }
+        unsafe { stack_sid_from_raw(raw) }
     }
 }
 
@@ -118,6 +87,6 @@ unsafe impl CloneSidFromRaw for Box<Sid> {
     #[inline]
     unsafe fn clone_sid_from_raw(raw: PSID) -> Self {
         // SAFETY: The caller guarantees `raw` points to a valid SID for this call.
-        unsafe { clone_from_raw_as(raw) }
+        unsafe { security_identifier_from_raw(raw).into() }
     }
 }

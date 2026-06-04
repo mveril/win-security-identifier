@@ -175,7 +175,7 @@ impl SecurityIdentifier {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, InvalidSidBinaryFormat> {
         validate_sid_bytes_unaligned(bytes)?;
         // SAFETY: All check was done before
-        Ok(unsafe { Self::from_bytes_unchecked(bytes) })
+        Ok(unsafe { Self::from_valid_bytes_unchecked(bytes) })
     }
 
     /// Builds a `SecurityIdentifier` from raw bytes without validation.
@@ -185,7 +185,7 @@ impl SecurityIdentifier {
     /// matches the embedded `sub_authority_count` and the expected binary
     /// layout. Passing invalid bytes results in undefined behavior.
     #[inline]
-    unsafe fn from_bytes_unchecked(bytes: &[u8]) -> Self {
+    pub(crate) unsafe fn from_valid_bytes_unchecked(bytes: &[u8]) -> Self {
         // SAFETY: All safety criteron are described in the doc
         let size_info = unsafe {
             #[expect(
@@ -195,12 +195,12 @@ impl SecurityIdentifier {
             SidSizeInfo::from_count(bytes[offset_of!(Sid, sub_authority_count)]).unwrap_unchecked()
         };
         // Safety: The uninit SID is properly initialized by copying from `self` after.
-        let mut uninit = MaybeUninitSecurityIdentifier::alloc(&size_info);
+        let uninit = MaybeUninitSecurityIdentifier::alloc(&size_info);
         // Safety: We copy all the bytes from a valid SID of the same size.
         unsafe {
             ptr::copy_nonoverlapping(
                 bytes.as_ptr(),
-                uninit.as_mut_ptr().cast::<u8>(),
+                uninit.as_mut_byte_ptr(),
                 size_info.layout().size(),
             );
         }
@@ -276,7 +276,7 @@ impl<'a> From<&'a Sid> for SecurityIdentifier {
     fn from(value: &'a Sid) -> Self {
         let binary = value.as_bytes();
         // Safety: sub_authority_count is known to be valid because `self` is valid.
-        unsafe { Self::from_bytes_unchecked(binary) }
+        unsafe { Self::from_valid_bytes_unchecked(binary) }
     }
 }
 
@@ -649,6 +649,37 @@ pub mod test {
             assert_eq!(result, None, "SID is not valid: {result:?}");
         }
     }
+    #[test]
+    fn test_from_valid_bytes_unchecked_copies_valid_sid_bytes() {
+        let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+        let bytes = sid.as_bytes();
+        // SAFETY: `bytes` comes from a valid SID.
+        let owned_sid = unsafe { SecurityIdentifier::from_valid_bytes_unchecked(bytes) };
+
+        assert_eq!(owned_sid.as_sid(), sid);
+        assert_eq!(owned_sid.as_bytes(), bytes);
+    }
+
+    #[test]
+    fn test_from_valid_bytes_unchecked_copies_unaligned_valid_sid_bytes() {
+        let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+        let bytes = sid.as_bytes();
+        let mut unaligned = [0_u8; 17];
+        let unaligned_bytes = {
+            let [_, tail @ ..] = &mut unaligned;
+            let (sid_bytes, _) = tail.split_at_mut(bytes.len());
+            sid_bytes.copy_from_slice(bytes);
+            &*sid_bytes
+        };
+
+        // SAFETY: `unaligned_bytes` contains a valid SID binary layout. This
+        // constructor copies bytes and does not create a `&Sid` from the source.
+        let owned_sid = unsafe { SecurityIdentifier::from_valid_bytes_unchecked(unaligned_bytes) };
+
+        assert_eq!(owned_sid.as_sid(), sid);
+        assert_eq!(owned_sid.as_bytes(), bytes);
+    }
+
     #[test]
     fn test_debug() {
         let sample_sid = well_known::NULL;
