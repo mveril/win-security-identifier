@@ -195,15 +195,15 @@ impl StackSid {
             return Err(err);
         }
         let mut sid = MaybeUninit::<Self>::uninit();
-        // SAFETY: `StackSid` has max size of `Sid`
+        // SAFETY: `bytes` was validated immediately above. `StackSid` has the
+        // maximum size of a SID.
         unsafe {
             sid.as_mut_ptr()
                 .cast::<u8>()
                 .copy_from_nonoverlapping(bytes.as_ptr(), bytes.len());
         }
-        // SAFETY: Initialized by previous
-        let sid = unsafe { sid.assume_init() };
-        Ok(sid)
+        // SAFETY: Initialized by previous copy.
+        Ok(unsafe { sid.assume_init() })
     }
 }
 
@@ -445,6 +445,24 @@ mod tests {
             prop_assert_eq!(metadata(sid_ref), sid.sub_authority_count as usize);
         }
     }
+    #[test]
+    fn test_from_bytes_copies_unaligned_valid_sid_bytes() {
+        let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+        let bytes = sid.as_bytes();
+        let mut unaligned = [0_u8; 17];
+        let unaligned_bytes = {
+            let [_, tail @ ..] = &mut unaligned;
+            let (sid_bytes, _) = tail.split_at_mut(bytes.len());
+            sid_bytes.copy_from_slice(bytes);
+            &*sid_bytes
+        };
+
+        let stack_sid = StackSid::from_bytes(unaligned_bytes).expect("valid SID bytes");
+
+        assert_eq!(stack_sid.as_sid(), sid);
+        assert_eq!(stack_sid.as_bytes(), bytes);
+    }
+
     #[test]
     #[expect(clippy::use_debug, reason = "test verifies Debug output")]
     fn test_debug() {

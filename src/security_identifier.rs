@@ -18,7 +18,6 @@ use core::ops::Deref;
 mod maybe_uninit;
 use core::borrow::{Borrow, BorrowMut};
 use core::ops::DerefMut;
-use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
 use maybe_uninit::MaybeUninitSecurityIdentifier;
@@ -186,23 +185,21 @@ impl SecurityIdentifier {
     /// layout. Passing invalid bytes results in undefined behavior.
     #[inline]
     unsafe fn from_bytes_unchecked(bytes: &[u8]) -> Self {
-        // SAFETY: All safety criteron are described in the doc
-        let size_info = unsafe {
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "It's the unchecked version safety is precised in the doc."
-            )]
-            SidSizeInfo::from_count(bytes[offset_of!(Sid, sub_authority_count)]).unwrap_unchecked()
-        };
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "The unchecked constructor requires a valid SID byte layout"
+        )]
+        let sub_authority_count = bytes[offset_of!(Sid, sub_authority_count)];
+        // SAFETY: All safety criteria are described in the doc.
+        let size_info = unsafe { SidSizeInfo::from_count(sub_authority_count).unwrap_unchecked() };
         // Safety: The uninit SID is properly initialized by copying from `self` after.
         let mut uninit = MaybeUninitSecurityIdentifier::alloc(&size_info);
         // Safety: We copy all the bytes from a valid SID of the same size.
         unsafe {
-            ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                uninit.as_mut_ptr().cast::<u8>(),
-                size_info.layout().size(),
-            );
+            uninit
+                .as_mut_ptr()
+                .cast::<u8>()
+                .copy_from_nonoverlapping(bytes.as_ptr(), size_info.layout().size());
         }
         // Safety: all is written so we can init.
         unsafe { uninit.assume_init() }
@@ -649,6 +646,37 @@ pub mod test {
             assert_eq!(result, None, "SID is not valid: {result:?}");
         }
     }
+    #[test]
+    fn test_from_bytes_unchecked_copies_valid_sid_bytes() {
+        let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+        let bytes = sid.as_bytes();
+        // SAFETY: `bytes` comes from a valid SID.
+        let owned_sid = unsafe { SecurityIdentifier::from_bytes_unchecked(bytes) };
+
+        assert_eq!(owned_sid.as_sid(), sid);
+        assert_eq!(owned_sid.as_bytes(), bytes);
+    }
+
+    #[test]
+    fn test_from_bytes_unchecked_copies_unaligned_valid_sid_bytes() {
+        let sid = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+        let bytes = sid.as_bytes();
+        let mut unaligned = [0_u8; 17];
+        let unaligned_bytes = {
+            let [_, tail @ ..] = &mut unaligned;
+            let (sid_bytes, _) = tail.split_at_mut(bytes.len());
+            sid_bytes.copy_from_slice(bytes);
+            &*sid_bytes
+        };
+
+        // SAFETY: `unaligned_bytes` contains a valid SID binary layout. This
+        // constructor copies bytes and does not create a `&Sid` from the source.
+        let owned_sid = unsafe { SecurityIdentifier::from_bytes_unchecked(unaligned_bytes) };
+
+        assert_eq!(owned_sid.as_sid(), sid);
+        assert_eq!(owned_sid.as_bytes(), bytes);
+    }
+
     #[test]
     fn test_debug() {
         let sample_sid = well_known::NULL;
