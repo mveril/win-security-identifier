@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
 };
 use win_security_identifier::{
-    CloneSidFromRaw, GetCurrentSid, LookupAccountName, SecurityIdentifier, Sid, StackSid,
+    prelude::*,
     sid_lookup::{AccountLookup, DomainAndName, SidLookup, SidType},
 };
 

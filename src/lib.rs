@@ -31,6 +31,18 @@
 //! uses this to allocate correctly.
 //!
 //! ## Examples
+//! ### Import common types from the prelude
+//! ```rust
+//! use win_security_identifier::prelude::*;
+//!
+//! const ADMIN: ConstSid<2> = ConstSid::new(
+//!     SidIdentifierAuthority::NT_AUTHORITY,
+//!     [32, 544],
+//! );
+//!
+//! assert_eq!(ADMIN.as_sid().last_sub_authority(), 544);
+//! ```
+//!
 //! ### Create a SID from parts
 //! ```rust
 //! # #[cfg(feature = "alloc")]
@@ -163,6 +175,7 @@ pub use parsing::InvalidSidFormat;
 /// Internal utilities for validation and layout calculations.
 pub(crate) mod utils;
 
+pub mod prelude;
 #[cfg(feature = "serde")]
 mod serde_impl;
 mod stack_sid;
