@@ -17,7 +17,7 @@ use win_security_identifier::{
     sid_lookup::{AccountLookup, DomainAndName, SidLookup, SidType},
 };
 
-type OptionalLookup<T> = Option<Result<T, ()>>;
+type OptionalLookup<T> = Option<Option<T>>;
 type AccountAndType = (DomainAndName, Option<SidType>);
 type AccountNameLookup = (bool, DomainAndName, Option<SidType>);
 
@@ -63,7 +63,7 @@ where
 
     assert_eq!(
         sid_lookup,
-        Some(Ok((user.account.clone(), Some(SidType::User)))),
+        Some(Some((user.account.clone(), Some(SidType::User)))),
         "Domain and name do not match expected value"
     );
 
@@ -79,7 +79,7 @@ where
 
     assert_eq!(
         account_lookup,
-        Some(Ok((true, user.account, Some(SidType::User)))),
+        Some(Some((true, user.account, Some(SidType::User)))),
         "Account name lookup should roundtrip to the current user SID"
     );
 }
@@ -109,7 +109,7 @@ fn current_user_from_powershell() -> PsUser {
 
 fn sid_lookup_account(sid: &Sid) -> OptionalLookup<AccountAndType> {
     sid.lookup_local_sid()
-        .map(|lookup| lookup.map(sid_lookup_parts).map_err(drop_error))
+        .map(|lookup| lookup.map(sid_lookup_parts).ok())
 }
 
 fn sid_lookup_parts(lookup: SidLookup) -> AccountAndType {
@@ -129,11 +129,8 @@ fn account_lookup_matches_current_sid<T>(
 where
     T: CloneSidFromRaw + LookupAccountName + AsRef<Sid>,
 {
-    T::lookup_local_account_name(account.to_string()).map(|lookup| {
-        lookup
-            .map(|lookup| account_lookup_parts(lookup, sid))
-            .map_err(drop_error)
-    })
+    T::lookup_local_account_name(account.to_string())
+        .map(|lookup| lookup.map(|lookup| account_lookup_parts(lookup, sid)).ok())
 }
 
 fn account_lookup_parts<T>(lookup: AccountLookup<T>, sid: &Sid) -> AccountNameLookup
@@ -145,5 +142,3 @@ where
 
     (sid_matches, lookup.domain_name, sid_type)
 }
-
-fn drop_error<E>(_: E) {}
