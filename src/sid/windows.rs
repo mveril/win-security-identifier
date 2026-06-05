@@ -120,3 +120,49 @@ impl Sid {
         })
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
+mod tests {
+    use crate::{SidIdentifierAuthority, StackSid};
+    use core::ptr;
+    use proptest::prelude::*;
+
+    use super::*;
+
+    proptest! {
+        #[test]
+        fn psid_to_sid_ref_to_stack_sid_clones_sid(sid in arb_stack_sid()) {
+            let source = sid.as_sid();
+            let raw = source.as_raw();
+
+            // SAFETY: `raw` points to `source`, which remains alive for this test.
+            let sid_ref = unsafe { Sid::from_raw(raw) };
+            let current = StackSid::from(sid_ref);
+
+            prop_assert_eq!(
+                current.as_sid(),
+                source,
+                "PSID -> &Sid -> StackSid must preserve the source SID"
+            );
+            prop_assert!(
+                !ptr::addr_eq(current.as_sid(), source),
+                "PSID -> &Sid -> StackSid must clone rather than borrow"
+            );
+        }
+    }
+
+    fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
+        (
+            any::<[u8; 6]>(),
+            proptest::collection::vec(any::<u32>(), 1..=15),
+        )
+            .prop_map(|(identifier_authority, sub_authorities)| {
+                StackSid::try_new(
+                    SidIdentifierAuthority::new(identifier_authority),
+                    &sub_authorities,
+                )
+                .expect("generated SID parts must be valid")
+            })
+    }
+}
