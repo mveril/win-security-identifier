@@ -16,7 +16,7 @@ sid_macro = { path = "macro", package = "win-security-identifier-macro", version
 [package]
 name = "win-security-identifier"
 description = "Windows Security Identifier (SID) library"
-keywords = ["windows", "sid", "security-identifier", "acl", "sddl"]
+keywords   = ["windows", "sid", "security-identifier", "acl", "sddl"]
 categories = [
   "os::windows-apis",
   "api-bindings",
@@ -31,7 +31,7 @@ repository.workspace = true
 
 
 [features]
-default = ["std"]
+default = ["std", "serde"]
 std = ["alloc", "parsing/std", "dep:smallvec","dep:num_enum","dep:widestring", "serde?/std", "thiserror/std", "dep:windows-sys" ]
 alloc = ["serde?/alloc"]
 macro = ["dep:sid_macro"]
