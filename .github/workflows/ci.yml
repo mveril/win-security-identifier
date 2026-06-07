@@ -100,12 +100,11 @@ jobs:
 
       - name: Upload coverage to Codecov (Windows and Linux only)
         if: ${{ runner.os != 'macOS' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: codecov.json
           flags: ${{ runner.os == 'Windows' && format('windows-{0}', matrix.toolchain) || format('linux-{0}', matrix.toolchain) }}
           fail_ci_if_error: true
-          version: v11.2.8
 
       # -------- Docs Windows --------
       - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
