@@ -87,6 +87,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Prepare Rust toolchain (stable)
         shell: bash
@@ -136,6 +138,20 @@ jobs:
 
           echo "version=${VERSION_FULL}" >> "$GITHUB_ENV"
           echo "prerelease=${PRERELEASE}" >> "$GITHUB_ENV"
+
+      - name: Detect previous release tag
+        id: release_history
+        shell: bash
+        run: |
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${TAG_NAME}^" 2>/dev/null || true)"
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Previous release tag: $PREVIOUS_TAG"
+            echo "has_previous_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No previous release tag found. Generated release notes will be skipped."
+            echo "has_previous_tag=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Verify workspace versions match tag
         shell: bash
@@ -202,6 +218,18 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.prerelease == 'true' && 'Prerelease' || 'Release' }} ${{ env.TAG_NAME }}
           body: |
-            Automated ${{ env.prerelease == 'true' && 'prerelease' || 'release' }} for ${{ github.repository }}.
-            Version: ${{ env.TAG_NAME }}
+            `win-security-identifier` ${{ env.TAG_NAME }} is available on crates.io.
+
+            ## Installation
+
+            ```console
+            cargo add win-security-identifier@${{ env.version }}
+            ```
+
+            ## Links
+
+            - [Crate on crates.io](https://crates.io/crates/win-security-identifier/${{ env.version }})
+            - [Documentation on docs.rs](https://docs.rs/win-security-identifier/${{ env.version }})
+
+          generate_release_notes: ${{ steps.release_history.outputs.has_previous_tag == 'true' }}
           prerelease: ${{ env.prerelease == 'true' }}
