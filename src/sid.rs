@@ -351,7 +351,7 @@ mod tests {
         #[test]
         fn sid_hash_and_eq(sid1 in arb_security_identifier(), sid2 in arb_security_identifier()) {
             use std::collections::hash_map::DefaultHasher;
-            use std::hash::Hasher;
+            use core::hash::Hasher;
             // Reflexivity
             prop_assert_eq!(&*sid1, &*sid1);
 
