@@ -330,8 +330,6 @@ mod tests {
     use crate::well_known;
     #[cfg(feature = "alloc")]
     use crate::{SecurityIdentifier, arb_security_identifier};
-    use core::hash::Hasher;
-    use core::ops::Deref;
 
     use super::*;
     use arrayvec::ArrayString;
@@ -342,7 +340,7 @@ mod tests {
     proptest! {
         #[test]
         fn sid_display_round_trip(sid in arb_security_identifier()) {
-            let display = sid.deref().to_string();
+            let display = sid.as_sid().to_string();
             prop_assert!(display.starts_with("S-1-"), "Display does not start with S-1-: {}", display);
 
             let dash_count = display.matches('-').count();
@@ -353,6 +351,7 @@ mod tests {
         #[test]
         fn sid_hash_and_eq(sid1 in arb_security_identifier(), sid2 in arb_security_identifier()) {
             use std::collections::hash_map::DefaultHasher;
+            use std::hash::Hasher;
             // Reflexivity
             prop_assert_eq!(&*sid1, &*sid1);
 
