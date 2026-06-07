@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload coverage to Codecov (Windows and Linux only)
         if: ${{ runner.os != 'macOS' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: codecov.json
           flags: ${{ runner.os == 'Windows' && format('windows-{0}', matrix.toolchain) || format('linux-{0}', matrix.toolchain) }}
