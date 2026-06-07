@@ -105,6 +105,7 @@ jobs:
           files: codecov.json
           flags: ${{ runner.os == 'Windows' && format('windows-{0}', matrix.toolchain) || format('linux-{0}', matrix.toolchain) }}
           fail_ci_if_error: true
+          version: v11.2.8
 
       # -------- Docs Windows --------
       - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
