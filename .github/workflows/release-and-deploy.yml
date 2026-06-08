@@ -33,8 +33,9 @@ jobs:
               echo "PR merged, creating tag..."
               branch="${GITHUB_HEAD_REF}"
               if [[ "$branch" != release/* ]]; then
-                echo "Error: Branch '$branch' does not start with 'release/'"
-                exit 1
+                echo "Branch '$branch' is not a release branch. Skipping deployment."
+                echo "tag=" >> "$GITHUB_OUTPUT"
+                exit 0
               fi
               version="${branch#release/}"
               if [ -z "$version" ]; then
@@ -216,7 +217,12 @@ jobs:
             local url="https://crates.io/api/v1/crates/${package}/${version}"
             local status
 
-            status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$url")"
+            status="$(curl \
+              --silent \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              --user-agent 'win-security-identifier-release-workflow (https://github.com/mveril/win-security-identifier)' \
+              "$url")"
             case "$status" in
               200)
                 echo "${package} ${version} is already published; skipping."
