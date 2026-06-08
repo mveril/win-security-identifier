@@ -48,12 +48,11 @@ cargo build --features serde
 
 ```rust
 use win_security_identifier::{
-    security_identifier::SecurityIdentifier,
-    sid_identifier_authority::SidIdentifierAuthority,
+    SecurityIdentifier,
+    SidIdentifierAuthority,
 };
 
 let sid = SecurityIdentifier::try_new(
-    1,
     SidIdentifierAuthority::NT_AUTHORITY,
     &[32u32, 544u32],
 ).unwrap();
@@ -67,6 +66,28 @@ println!("{}", sid); // S-1-5-32-544
 let sid = /* some Sid instance */;
 let res = sid.lookup_local_sid().unwrap().unwrap();
 println!("{}", res.domain_name);
+```
+
+### Inspect the current Windows token
+
+```rust
+# #[cfg(all(windows, feature = "std", feature = "alloc"))]
+# {
+use win_security_identifier::{GetCurrentSid, SecurityIdentifier, StackSid};
+
+let current_user = SecurityIdentifier::get_current_user_sid().unwrap();
+let primary_group = StackSid::get_current_primary_group_sid().unwrap();
+let logon_sid = StackSid::get_current_logon_sid().unwrap();
+let groups = StackSid::get_current_user_group_sids().unwrap();
+
+assert!(SecurityIdentifier::is_current_user_member_of(current_user.as_ref()).unwrap());
+println!("current user: {current_user}");
+println!("primary group: {primary_group}");
+println!("group count: {}", groups.len());
+if let Some(logon_sid) = logon_sid {
+    println!("logon SID: {logon_sid}");
+}
+# }
 ```
 
 ## Notes

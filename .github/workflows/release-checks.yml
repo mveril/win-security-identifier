@@ -1,0 +1,149 @@
+name: Release Checks
+
+on:
+  push:
+    branches:
+      - release/*
+  pull_request:
+    branches:
+      - release/*
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    name: "Check crate versions"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      RELEASE_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Rust toolchain (stable)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup default stable
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Extract branch expected version (SemVer without build metadata)
+        id: extract_version
+        shell: bash
+        run: |
+          BRANCH_NAME="${RELEASE_BRANCH}"
+          RAW_VERSION="${BRANCH_NAME#release/}"
+
+          if [[ -z "$RAW_VERSION" ]]; then
+            echo "❌ ERROR: Branch does not contain a version after 'release/'."
+            exit 1
+          fi
+
+          # Reject build metadata (e.g., +exp.sha)
+          if [[ "$RAW_VERSION" == *"+"* ]]; then
+            echo "❌ ERROR: Build metadata (+...) is not allowed in release branch names."
+            exit 1
+          fi
+
+          # SemVer pattern: MAJOR.MINOR.PATCH[-PRERELEASE]
+          if [[ "$RAW_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z\.-]+))?$ ]]; then
+            EXPECTED_VERSION="$RAW_VERSION"
+          else
+            echo "❌ ERROR: '$RAW_VERSION' is not a valid SemVer (expected MAJOR.MINOR.PATCH[-PRERELEASE])."
+            exit 1
+          fi
+
+          echo "EXPECTED_VERSION=$EXPECTED_VERSION" >> "$GITHUB_ENV"
+          echo "✅ Expected version from branch: $EXPECTED_VERSION"
+
+      - name: Compare publishable workspace crate versions with expected version
+        shell: bash
+        run: |
+          cargo generate-lockfile || true
+
+          cargo metadata --format-version 1 --no-deps > metadata.json
+
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          expected = os.environ["EXPECTED_VERSION"]
+
+          with open("metadata.json", encoding="utf-8") as fh:
+              metadata = json.load(fh)
+
+          workspace_members = set(metadata["workspace_members"])
+          errors = []
+
+          for package in metadata["packages"]:
+              if package["id"] not in workspace_members:
+                  continue
+              if package.get("publish") is False:
+                  continue
+              if package["version"] != expected:
+                  errors.append(
+                      f"Crate '{package['name']}' version '{package['version']}' "
+                      f"does not match expected '{expected}'."
+                  )
+
+          if errors:
+              for error in errors:
+                  print(f"❌ ERROR: {error}", file=sys.stderr)
+              sys.exit(1)
+
+          print("✅ All publishable workspace crate versions match.")
+          PY
+
+  publish-dry-run:
+    needs: version-check
+    runs-on: ubuntu-latest
+    name: "Publish Dry-Run"
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      # Optionnel: forcer le nom du crate si nécessaire
+      # CRATE_NAME: win-security-identifier
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Rust toolchain (stable)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup default stable
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run tests (workspace, all targets, all features)
+        shell: bash
+        run: |
+          cargo test --workspace --all-targets --all-features -- --nocapture
+
+      - name: Publish Dry-Run (workspace)
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # Dry-run accepts prerelease versions normally; no build metadata allowed by our branch rule.
+          cargo publish --workspace --dry-run

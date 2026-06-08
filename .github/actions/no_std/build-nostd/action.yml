@@ -1,0 +1,18 @@
+name: "Say Hello"
+description: "Print a greeting with a name"
+
+inputs:
+  kind:
+    description: "The type of build"
+    required: true
+  matrices_b64:
+    description: "The base64 ecoded matrices"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build no_std
+      shell: bash
+      run: |
+          set -euo pipefail
+          printf '%s' "${{ inputs.matrices_b64 }}" | nu --stdin .github/actions/no_std/build-nostd/build.nu ${{ inputs.kind }}

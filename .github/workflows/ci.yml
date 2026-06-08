@@ -1,0 +1,199 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main, develop, 'release/*']
+  pull_request:
+    branches: [main, develop, 'release/*']
+  schedule:
+    - cron: '0 3 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-test-std:
+    name: Build & test (${{ matrix.os }}, ${{ matrix.toolchain }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        toolchain: [stable, nightly]
+        docsrs: [false, true]
+        exclude:
+          - toolchain: stable
+            docsrs: true
+          - toolchain: nightly
+            docsrs: false
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      CARGO_INCREMENTAL: 0
+      # '--cfg docsrs' only on nightly builds
+      RUSTDOCFLAGS: ${{ matrix.docsrs && '--cfg docsrs -D warnings' || '-D warnings' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (${{ matrix.toolchain }})
+        run: |
+          rustup set profile minimal
+          rustup update ${{ matrix.toolchain }}
+          rustup default ${{ matrix.toolchain }}
+          rustup component add rustfmt clippy
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/advisory-db
+            target
+          # We use ${{ github.sha }} instead of hashfile because of an issue with the macos runner
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ github.sha }}
+
+      - name: Show toolchain versions
+        run: rustc -Vv && cargo -V
+
+      - name: Install cargo-deny (nightly Linux only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
+        run: cargo install cargo-deny || echo "cargo-deny already installed"
+
+      - name: Run cargo deny (nightly Linux only)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'nightly' }}
+        run: cargo deny check --show-stats
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy (lint all targets)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace --all-features
+
+      # -------- Tests / Coverage --------
+
+      # Nightly : normal tests
+      - name: Run tests (macOS only)
+        if: ${{ runner.os == 'macOS' }}
+        run: cargo test --workspace --all-features --all-targets -- --nocapture
+
+      # Stable : install cargo-llvm-cov
+      - name: Install cargo-llvm-cov (windows and linux only)
+        if: ${{ runner.os != 'macOS' }}
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Stable : tests + coverage with cargo-llvm-cov
+      - name: Run tests with coverage (Windows and Linux only)
+        if: ${{ runner.os != 'macOS' }}
+        run: |
+          cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+
+      - name: Upload coverage to Codecov (Windows and Linux only)
+        if: ${{ runner.os != 'macOS' }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: codecov.json
+          flags: ${{ runner.os == 'Windows' && format('windows-{0}', matrix.toolchain) || format('linux-{0}', matrix.toolchain) }}
+          fail_ci_if_error: true
+
+      # -------- Docs Windows --------
+      - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
+        if: ${{ runner.os == 'Windows' }}
+        run: cargo doc --workspace --all-features --no-deps
+  
+  no-std:
+    name: no_std check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TARGET: x86_64-unknown-none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable for no_std))
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup target add ${TARGET}
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/advisory-db
+            target
+          # We use ${{ github.sha }} instead of hashfile because of an issue with the macos runner
+          key: ${{ runner.os }}-cargo-stable-no_std-${{ github.sha }}
+
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: '0.108.0'
+
+      - name: Detect no_std matrices
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMBINED_JSON="$(
+            nu .github/workflows/ci/no_std/detect.nu
+          )"
+
+          # Error if both matrices are empty
+          LEN_CORE="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get core | length")"
+          LEN_ALLOC="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | length")"
+
+          if [[ "$LEN_CORE" -eq 0 && "$LEN_ALLOC" -eq 0 ]]; then
+            echo "FATAL: Both CORE and ALLOC matrices are empty." >&2
+            exit 1
+          fi
+
+          MATRICES_B64="$(printf '%s' "$COMBINED_JSON" | nu --stdin -c 'encode base64')"
+          echo "matrices_b64=$MATRICES_B64" >> "$GITHUB_OUTPUT"
+
+          # Log humain
+          echo "== CORE_MATRIX =="
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get core | table"
+
+          echo "== ALLOC_MATRIX =="
+          printf '%s' "$COMBINED_JSON" | nu --stdin -c "from json | get alloc | table"
+
+      - name: "no_std core: Check"
+        uses: ./.github/actions/no_std/check-nostd
+        with:
+          kind: core
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std core: build"
+        uses: ./.github/actions/no_std/build-nostd
+        with:
+          kind: core
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std alloc: Check"
+        uses: ./.github/actions/no_std/check-nostd
+        with:
+          kind: alloc
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}
+
+      - name: "no_std alloc: build"
+        uses: ./.github/actions/no_std/build-nostd
+        with:
+          kind: alloc
+          matrices_b64: ${{ steps.detect.outputs.matrices_b64 }}

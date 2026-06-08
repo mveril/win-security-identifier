@@ -1,0 +1,168 @@
+use std::ffi::OsStr;
+use widestring::WideCString;
+use windows_sys::Win32::Security::PSID;
+pub mod sid_lookup;
+
+#[cfg(windows)]
+use crate::sid::sid_lookup::SidLookup;
+use crate::sid::sid_lookup::{SidLookupOperation, SidType};
+
+use super::Sid;
+
+impl Sid {
+    /// Creates a reference to a `Sid` from a raw `PSID` pointer.
+    ///
+    /// # Safety
+    /// The `raw` pointer must be non-null, properly aligned for a `Sid`
+    /// reference, point to a valid SID memory block with a correct layout, and
+    /// live at least as long as the returned reference.
+    #[inline]
+    pub const unsafe fn from_raw<'a>(raw: PSID) -> &'a Self {
+        // Safety: Same precondition as the public API.
+        unsafe { Self::from_raw_internal(raw as *const ()) }
+    }
+
+    /// Returns the underlying raw `PSID` pointer.
+    #[inline]
+    #[must_use]
+    pub const fn as_raw(&self) -> PSID {
+        // Direct cast is fine; avoids building a temporary slice.
+        core::ptr::from_ref(self) as PSID
+    }
+
+    // -------- Internals -----------------------------------------------------
+
+    /// Convert `OsStr` to `WideCString`, returning `None` on interior-nul errors.
+    #[inline]
+    fn osstr_to_wide(os: &OsStr) -> Option<WideCString> {
+        WideCString::from_os_str(os).ok()
+    }
+
+    /// Internal: cheap “is known” probe on a given machine.
+    /// Keep this minimal (no extra allocations beyond the optional machine name).
+    #[inline]
+    fn is_known_impl(&self, machine: Option<&WideCString>) -> bool {
+        // If SidLookupOperation::new() is already the cheap probe,
+        // keep it; otherwise we could introduce a dedicated `exists()` in the future.
+        SidLookupOperation::new(self, machine).is_some()
+    }
+
+    /// Internal: full lookup on a given machine.
+    #[cfg(windows)]
+    #[inline]
+    fn lookup_impl(
+        &self,
+        machine: Option<&WideCString>,
+    ) -> Option<Result<SidLookup, sid_lookup::Error>> {
+        // Build once, then process. Keeps the public API tiny.
+        SidLookupOperation::new(self, machine).map(SidLookupOperation::process)
+    }
+
+    // -------- Public API ----------------------------------------------------
+
+    /// Checks if this SID is known on the local machine.
+    #[inline]
+    #[must_use]
+    pub fn is_known_local_sid(&self) -> bool {
+        self.is_known_impl(None)
+    }
+
+    /// Checks if this SID is known on a remote machine.
+    ///
+    /// Accepts any `AsRef<OsStr>` to avoid forcing callers to build an `OsStr`.
+    #[inline]
+    #[must_use]
+    pub fn is_known_remote_sid<S: AsRef<OsStr>>(&self, machine_name: S) -> bool {
+        Self::osstr_to_wide(machine_name.as_ref())
+            .is_some_and(|wide: widestring::U16CString| self.is_known_impl(Some(&wide)))
+    }
+
+    /// Performs a lookup of this SID on the local machine.
+    #[inline]
+    #[must_use]
+    pub fn lookup_local_sid(&self) -> Option<Result<SidLookup, sid_lookup::Error>> {
+        self.lookup_impl(None)
+    }
+
+    /// Performs a lookup of this SID on a remote machine.
+    ///
+    /// Accepts any `AsRef<OsStr>` to be ergonomic for callers.
+    #[inline]
+    #[must_use]
+    pub fn lookup_remote_sid<S: AsRef<OsStr>>(
+        &self,
+        machine_name: S,
+    ) -> Option<Result<SidLookup, sid_lookup::Error>> {
+        Self::osstr_to_wide(machine_name.as_ref()).and_then(|w| self.lookup_impl(Some(&w)))
+    }
+
+    /// Returns the `SidType` for this SID on the local machine (if lookup succeeds).
+    ///
+    /// `None` means the probe failed (e.g., unknown SID or API error).
+    /// `Some(Err(_))` means the raw type could not be converted into `SidType`.
+    #[inline]
+    #[must_use]
+    pub fn local_sid_type(
+        &self,
+    ) -> Option<Result<SidType, num_enum::TryFromPrimitiveError<SidType>>> {
+        SidLookupOperation::new(self, None).and_then(SidLookupOperation::process_type)
+    }
+
+    /// Returns the `SidType` for this SID on a remote machine (if lookup succeeds).
+    #[inline]
+    #[must_use]
+    pub fn remote_sid_type<S: AsRef<OsStr>>(
+        &self,
+        machine_name: S,
+    ) -> Option<Result<SidType, num_enum::TryFromPrimitiveError<SidType>>> {
+        Self::osstr_to_wide(machine_name.as_ref()).and_then(|w| {
+            SidLookupOperation::new(self, Some(&w)).and_then(SidLookupOperation::process_type)
+        })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
+mod tests {
+    use crate::{SidIdentifierAuthority, StackSid};
+    use core::ptr;
+    use proptest::prelude::*;
+
+    use super::*;
+
+    proptest! {
+        #[test]
+        fn psid_to_sid_ref_to_stack_sid_clones_sid(sid in arb_stack_sid()) {
+            let source = sid.as_sid();
+            let raw = source.as_raw();
+
+            // SAFETY: `raw` points to `source`, which remains alive for this test.
+            let sid_ref = unsafe { Sid::from_raw(raw) };
+            let current = StackSid::from(sid_ref);
+
+            prop_assert_eq!(
+                current.as_sid(),
+                source,
+                "PSID -> &Sid -> StackSid must preserve the source SID"
+            );
+            prop_assert!(
+                !ptr::addr_eq(current.as_sid(), source),
+                "PSID -> &Sid -> StackSid must clone rather than borrow"
+            );
+        }
+    }
+
+    fn arb_stack_sid() -> impl Strategy<Value = StackSid> {
+        (
+            any::<[u8; 6]>(),
+            proptest::collection::vec(any::<u32>(), 1..=15),
+        )
+            .prop_map(|(identifier_authority, sub_authorities)| {
+                StackSid::try_new(
+                    SidIdentifierAuthority::new(identifier_authority),
+                    &sub_authorities,
+                )
+                .expect("generated SID parts must be valid")
+            })
+    }
+}
