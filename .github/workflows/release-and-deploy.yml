@@ -155,9 +155,11 @@ jobs:
 
       - name: Verify workspace versions match tag
         shell: bash
+        env:
+          METADATA_PATH: ${{ runner.temp }}/metadata.json
         run: |
           cargo generate-lockfile || true
-          cargo metadata --format-version 1 --no-deps > metadata.json
+          cargo metadata --format-version 1 --no-deps > "${METADATA_PATH}"
 
           python - <<'PY'
           import json
@@ -166,7 +168,7 @@ jobs:
 
           expected = os.environ["version"]
 
-          with open("metadata.json", encoding="utf-8") as fh:
+          with open(os.environ["METADATA_PATH"], encoding="utf-8") as fh:
               metadata = json.load(fh)
 
           workspace_members = set(metadata["workspace_members"])
