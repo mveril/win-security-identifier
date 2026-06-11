@@ -1,6 +1,6 @@
 [package]
 name = "win-security-identifier-macro"
-keywords = ["windows", "macro", "sid", "security-identifier", "acl", "sddl"]
+keywords = ["windows", "macro", "sid", "security-identifier", "sddl"]
 description = "Proc macro for the win-security-identifier project"
 version.workspace = true
 authors.workspace = true
