@@ -53,7 +53,7 @@ smallvec = { version = "1.15", optional = true }
 num_enum = {version = "0.7", optional = true}
 
 [target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.60"
+version = ">=0.59, <0.62"
 features = [
   "Win32_Foundation",
   "Win32_Security_Authorization",
