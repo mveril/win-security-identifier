@@ -33,8 +33,9 @@ jobs:
               echo "PR merged, creating tag..."
               branch="${GITHUB_HEAD_REF}"
               if [[ "$branch" != release/* ]]; then
-                echo "Error: Branch '$branch' does not start with 'release/'"
-                exit 1
+                echo "Branch '$branch' is not a release branch. Skipping deployment."
+                echo "tag=" >> "$GITHUB_OUTPUT"
+                exit 0
               fi
               version="${branch#release/}"
               if [ -z "$version" ]; then
@@ -155,9 +156,11 @@ jobs:
 
       - name: Verify workspace versions match tag
         shell: bash
+        env:
+          METADATA_PATH: ${{ runner.temp }}/metadata.json
         run: |
           cargo generate-lockfile || true
-          cargo metadata --format-version 1 --no-deps > metadata.json
+          cargo metadata --format-version 1 --no-deps > "${METADATA_PATH}"
 
           python - <<'PY'
           import json
@@ -166,7 +169,7 @@ jobs:
 
           expected = os.environ["version"]
 
-          with open("metadata.json", encoding="utf-8") as fh:
+          with open(os.environ["METADATA_PATH"], encoding="utf-8") as fh:
               metadata = json.load(fh)
 
           workspace_members = set(metadata["workspace_members"])
@@ -209,7 +212,34 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cargo publish --workspace --locked
+          publish_if_missing() {
+            local package="$1"
+            local url="https://crates.io/api/v1/crates/${package}/${version}"
+            local status
+
+            status="$(curl \
+              --silent \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              --user-agent 'win-security-identifier-release-workflow (https://github.com/mveril/win-security-identifier)' \
+              "$url")"
+            case "$status" in
+              200)
+                echo "${package} ${version} is already published; skipping."
+                ;;
+              404)
+                cargo publish --package "$package" --locked
+                ;;
+              *)
+                echo "Error: crates.io returned HTTP ${status} for ${package} ${version}."
+                exit 1
+                ;;
+            esac
+          }
+
+          publish_if_missing "win-security-identifier-parsing"
+          publish_if_missing "win-security-identifier-macro"
+          publish_if_missing "win-security-identifier"
 
       - name: Create GitHub Release
         id: ghrel
