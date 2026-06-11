@@ -1,7 +1,7 @@
 [workspace]
 members = [".", "parsing", "macro"]
 resolver = "2"
-package.version = "0.1.0"
+package.version = "0.1.1"
 package.authors = ["Mickaël Véril <mickael.veril@wanadoo.fr>"]
 package.license = "MIT OR Apache-2.0"
 package.edition = "2024"
@@ -10,8 +10,8 @@ package.repository = "https://github.com/mveril/win-security-identifier"
 [workspace.dependencies]
 arrayvec = {version = "0.7", default-features = false}
 thiserror = {version = "2", default-features = false}
-parsing = { path = "parsing", package = "win-security-identifier-parsing", default-features = false, version = "0.1.0"}
-sid_macro = { path = "macro", package = "win-security-identifier-macro", version = "0.1.0"}
+parsing = { path = "parsing", package = "win-security-identifier-parsing", default-features = false, version = "0.1.1"}
+sid_macro = { path = "macro", package = "win-security-identifier-macro", version = "0.1.1"}
 
 [package]
 name = "win-security-identifier"
@@ -53,7 +53,7 @@ smallvec = { version = "1.15", optional = true }
 num_enum = {version = "0.7", optional = true}
 
 [target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.60"
+version = ">=0.59, <0.62"
 features = [
   "Win32_Foundation",
   "Win32_Security_Authorization",
