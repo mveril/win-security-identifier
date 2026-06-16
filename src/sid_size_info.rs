@@ -47,7 +47,7 @@ impl SidSizeInfo {
 
         // Remaining must be multiple of u32
         let remaining = size - SID_HEAD_SIZE;
-        if !remaining.is_multiple_of(core::mem::size_of::<u32>()) {
+        if remaining % core::mem::size_of::<u32>() != 0 {
             return None;
         }
 
