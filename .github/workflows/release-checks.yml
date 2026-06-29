@@ -9,6 +9,79 @@ on:
       - release/*
 
 jobs:
+  msrv-windows:
+    runs-on: windows-latest
+    name: "MSRV validation (Windows)"
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Rust toolchain (stable)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup default stable
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.toml', '.cargo/config.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-msrv-
+
+      - name: Install cargo-msrv
+        shell: bash
+        run: cargo install cargo-msrv --locked
+
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: '0.108.0'
+
+      - name: Verify workspace rust-version declarations
+        shell: bash
+        run: |
+          cargo metadata --format-version 1 --no-deps | nu --stdin -c '
+            let metadata = ($in | from json)
+            let members = $metadata.workspace_members
+            let errors = (
+              $metadata.packages
+              | where {|package|
+                  (($package.id in $members)
+                    and (($package.publish? | default null) != false)
+                    and (($package.rust_version? | default "") == ""))
+                }
+              | each {|package| $"($package.name) does not declare rust-version in ($package.manifest_path)" }
+            )
+
+            if (($errors | length) > 0) {
+              $errors | each {|error| print $"ERROR: ($error)" }
+              exit 1
+            }
+
+            print "All publishable workspace crates declare rust-version."
+          '
+
+      - name: Verify MSRV check (all features)
+        shell: bash
+        run: cargo msrv verify -- cargo check --workspace --all-features
+
+      - name: Verify MSRV tests (all features)
+        shell: bash
+        run: cargo msrv verify -- cargo test --workspace --all-features --all-targets
+
+      - name: Verify MSRV tests (no default features)
+        shell: bash
+        run: cargo msrv verify -- cargo test --workspace --no-default-features
+
   version-check:
     runs-on: ubuntu-latest
     name: "Check crate versions"
@@ -106,7 +179,7 @@ jobs:
           PY
 
   publish-dry-run:
-    needs: version-check
+    needs: [msrv-windows, version-check]
     runs-on: ubuntu-latest
     name: "Publish Dry-Run"
     env:
