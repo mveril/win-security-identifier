@@ -86,7 +86,7 @@ impl AccountSid {
 }
 
 #[inline]
-fn has_account_rid_shape(sid: &Sid) -> bool {
+const fn has_account_rid_shape(sid: &Sid) -> bool {
     matches!(sid.sub_authorities(), [21, _, _, _, _])
 }
 
