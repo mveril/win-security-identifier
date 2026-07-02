@@ -29,6 +29,17 @@ cargo test --workspace --all-features
 cargo test --workspace --no-default-features
 ```
 
+MSRV compatibility is validated with `cargo-msrv`. For changes that affect
+language features, dependency versions, feature resolution, or Windows-only
+code paths, also run the MSRV checks on Windows:
+
+```powershell
+cargo install cargo-msrv --locked
+cargo msrv verify -- cargo check --workspace --all-features
+cargo msrv verify -- cargo test --workspace --all-features --all-targets
+cargo msrv verify -- cargo test --workspace --no-default-features
+```
+
 Run:
 
 ```powershell

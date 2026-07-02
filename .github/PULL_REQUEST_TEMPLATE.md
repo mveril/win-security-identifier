@@ -26,6 +26,7 @@
 - [ ] `cargo test --workspace --no-default-features`
 - [ ] `cargo clippy --workspace --all-targets --all-features`
 - [ ] `cargo fmt --all -- --check`
+- [ ] MSRV validated with cargo-msrv on Windows when relevant
 - [ ] Relevant manual testing completed
 
 ## Windows Notes
