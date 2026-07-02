@@ -89,7 +89,7 @@ fn classify_local(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
-fn classify_creator(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_creator(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [0] => SidClassification::CreatorOwner,
         [1] => SidClassification::CreatorGroup,
@@ -97,7 +97,7 @@ fn classify_creator(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
-fn classify_nt_authority(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_nt_authority(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [21, _, ..] => SidClassification::AccountDomain,
         [32, _, ..] => SidClassification::BuiltinAlias,
@@ -106,7 +106,7 @@ fn classify_nt_authority(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
-fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [2, _, ..] => SidClassification::AppContainer,
         [3, _, ..] => SidClassification::Capability,
@@ -114,7 +114,7 @@ fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
-fn classify_authentication_authority(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_authentication_authority(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [1 | 2, ..] => SidClassification::AuthenticationAuthority,
         _ => SidClassification::Unknown,
