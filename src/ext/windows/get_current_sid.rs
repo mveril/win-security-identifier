@@ -21,6 +21,10 @@ use windows_sys::Win32::{
     },
 };
 
+#[allow(
+    dead_code,
+    reason = "Rust 1.85.0 dead_code does not count use from anonymous const assertions"
+)]
 const MAX_TOKEN_USER_BUFFER_SIZE: usize = size_of::<TOKEN_USER>() + SECURITY_MAX_SID_SIZE as usize;
 const _: () = assert!(
     size_of::<SE_TOKEN_USER>() >= MAX_TOKEN_USER_BUFFER_SIZE,
@@ -45,11 +49,19 @@ impl TokenInformationBuffer {
         }
     }
 
-    const fn as_mut_ptr(&mut self) -> *mut u8 {
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "Vec::as_mut_ptr is not const-stable on the Rust 1.85.0 MSRV"
+    )]
+    fn as_mut_ptr(&mut self) -> *mut u8 {
         self.storage.as_mut_ptr().cast()
     }
 
-    const fn as_ptr(&self) -> *const u8 {
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "Vec::as_ptr is not const-stable on the Rust 1.85.0 MSRV"
+    )]
+    fn as_ptr(&self) -> *const u8 {
         self.storage.as_ptr().cast()
     }
 
@@ -75,7 +87,11 @@ const _: () = assert!(
 struct TokenGroupAttributes(u32);
 
 impl TokenGroupAttributes {
-    const LOGON_ID: Self = Self(SE_GROUP_LOGON_ID.cast_unsigned());
+    #[allow(
+        clippy::cast_sign_loss,
+        reason = "SE_GROUP_LOGON_ID is a Windows bitflag exposed as i32"
+    )]
+    const LOGON_ID: Self = Self(SE_GROUP_LOGON_ID as u32);
 
     const fn from_raw(raw: u32) -> Self {
         Self(raw)
