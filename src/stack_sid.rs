@@ -145,9 +145,6 @@ impl StackSid {
             #[must_use]
             #[inline]
             pub const fn last_sub_authority(&self) -> u32;
-            #[must_use]
-            #[inline]
-            pub fn classification(&self) -> crate::SidClassification;
         }
 
         to self.as_sid_mut() {
@@ -163,6 +160,13 @@ impl StackSid {
             #[inline]
             pub const unsafe fn as_bytes_mut(&mut self) -> &mut [u8];
         }
+    }
+
+    /// Returns a high-level classification for this SID.
+    #[must_use]
+    #[inline]
+    pub const fn classification(&self) -> crate::SidClassification {
+        self.as_sid().classification()
     }
 
     /// Creates a [`StackSid`] from its binary representation.
