@@ -16,6 +16,7 @@ use core::{
     hash::{self, Hash},
     ptr,
 };
+use delegate::delegate;
 
 /// Fixed-size, compile-time Security Identifier (SID).
 ///
@@ -164,11 +165,12 @@ where
         self.sub_authorities[N - 1]
     }
 
-    /// Returns a high-level classification for this SID.
-    #[must_use]
-    #[inline]
-    pub const fn classification(&self) -> SidClassification {
-        self.as_sid().classification()
+    delegate! {
+        to self.as_sid() {
+            #[must_use]
+            #[inline]
+            pub const fn classification(&self) -> SidClassification;
+        }
     }
 
     /// Returns a reference to this `ConstSid` as a dynamically-sized [`Sid`].
