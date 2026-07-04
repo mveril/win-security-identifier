@@ -1,7 +1,5 @@
 // Windows-only integration test that fetches SID + DOMAIN\Name with canonical casing
 #![cfg(windows)]
-#![cfg(feature = "std")]
-#![cfg(feature = "serde")]
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 #![allow(clippy::std_instead_of_core)]
 
