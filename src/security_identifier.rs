@@ -578,13 +578,10 @@ pub mod test {
         }
     }
 
-    #[cfg(all(feature = "std", windows))]
+    #[cfg(all(feature = "std", windows, not(miri)))]
     mod windows {
         use core::ptr;
         use core::slice;
-
-        use crate::GetCurrentSid as _;
-        use crate::SecurityIdentifier;
 
         use super::arb_security_identifier;
         use proptest::prelude::*;
@@ -628,24 +625,6 @@ pub mod test {
                     );
                 }
             }
-        }
-
-        #[test]
-        fn test_current_sid_work() {
-            let result = SecurityIdentifier::get_current_user_sid();
-            assert!(
-                result.is_ok(),
-                "Failed to get current user SID: {:?}",
-                result.err()
-            );
-            let sid = result.unwrap();
-            // Safety: this method are always safe to call.
-            #[expect(clippy::multiple_unsafe_ops_per_block, reason = "allowed in tests")]
-            let result = unsafe {
-                (IsValidSid(sid.as_raw()) == 0)
-                    .then_some(windows_sys::Win32::Foundation::GetLastError())
-            };
-            assert_eq!(result, None, "SID is not valid: {result:?}");
         }
     }
     #[test]

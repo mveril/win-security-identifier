@@ -140,13 +140,9 @@ impl Sid {
     ///   `sub_authority_count` and the tail length).
     #[allow(dead_code)]
     pub(crate) const unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
+        let len = self.min_layout().size();
         // Safety: Precondition definied in the method doc.
-        unsafe {
-            slice::from_raw_parts_mut(
-                core::ptr::from_ref(self).cast_mut().cast::<u8>(),
-                self.min_layout().size(),
-            )
-        }
+        unsafe { slice::from_raw_parts_mut(core::ptr::from_mut(self).cast::<u8>(), len) }
     }
 
     /// Returns the slice of sub-authorities (`[u32]`) with length `sub_authority_count`.
@@ -379,7 +375,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(windows, feature = "std"))]
+    #[cfg(all(windows, feature = "std", not(miri)))]
     mod windows {
         use super::super::*;
         #[cfg(feature = "alloc")]
