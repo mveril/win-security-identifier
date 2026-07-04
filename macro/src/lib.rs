@@ -1,4 +1,8 @@
 #![allow(
+    linker_messages,
+    reason = "MSVC reports generated import library details for proc-macro DLLs"
+)]
+#![allow(
     clippy::missing_inline_in_public_items,
     reason = "Not an issue in a macro crate"
 )]

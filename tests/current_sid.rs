@@ -148,7 +148,9 @@ where
 fn assert_windows_valid_sid(sid: &Sid) {
     // SAFETY: `sid.as_raw()` returns a pointer to a live SID value and IsValidSid
     // only reads that SID.
-    let result = unsafe { (IsValidSid(sid.as_raw()) == 0).then_some(GetLastError()) };
+    let is_valid = unsafe { IsValidSid(sid.as_raw()) != 0 };
+    // SAFETY: GetLastError reads the calling thread's last-error code.
+    let result = (!is_valid).then(|| unsafe { GetLastError() });
 
     assert_eq!(result, None, "SID is not valid: {result:?}");
 }
