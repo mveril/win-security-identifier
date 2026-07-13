@@ -328,12 +328,14 @@ impl Hash for Sid {
 #[cfg(test)]
 mod tests {
     use crate::well_known;
-    #[cfg(feature = "alloc")]
+    #[cfg(feature = "std")]
     use crate::{SecurityIdentifier, arb_security_identifier};
 
-    use super::*;
     use arrayvec::ArrayString;
     use core::fmt::Write;
+    #[cfg(feature = "std")]
+    use core::hash::Hash;
+    #[cfg(feature = "std")]
     use proptest::prelude::*;
 
     #[cfg(feature = "std")]

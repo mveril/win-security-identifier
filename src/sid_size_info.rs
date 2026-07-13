@@ -75,7 +75,7 @@ impl SidSizeInfo {
     }
 }
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod test {
     use super::*;
     use crate::ConstSid;

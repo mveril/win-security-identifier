@@ -482,8 +482,10 @@ pub mod test {
     #[cfg(not(has_ptr_metadata))]
     use crate::polyfills_ptr::metadata;
     use crate::well_known;
-    use core::hash::Hash;
-    use core::hash::Hasher;
+    #[cfg(all(feature = "alloc", not(feature = "std")))]
+    use alloc::format;
+    #[cfg(feature = "std")]
+    use core::hash::{Hash, Hasher};
     #[cfg(has_ptr_metadata)]
     use core::ptr::metadata;
     use proptest::prelude::*;

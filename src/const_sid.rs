@@ -4,8 +4,6 @@ use crate::SidClassification;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
 use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid, utils};
-#[cfg(all(feature = "alloc", not(feature = "std")))]
-use alloc::borrow::ToOwned;
 #[cfg(has_ptr_metadata)]
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
