@@ -137,7 +137,7 @@ mod test {
             prop_assert_ne!(SidSizeInfo::from_full_size(size), None);
         }
     }
-    #[cfg(all(windows, feature = "std"))]
+    #[cfg(all(windows, feature = "std", not(miri)))]
     mod windows {
         use super::super::*;
         use proptest::prelude::*;
