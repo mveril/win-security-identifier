@@ -169,7 +169,7 @@ where
         to self.as_sid() {
             #[must_use]
             #[inline]
-            pub fn classification(&self) -> SidClassification;
+            pub const fn classification(&self) -> SidClassification;
         }
     }
 
