@@ -26,6 +26,7 @@
 - [ ] `cargo test --workspace --no-default-features`
 - [ ] `cargo clippy --workspace --all-targets --all-features`
 - [ ] `cargo fmt --all -- --check`
+- [ ] `MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-disable-isolation" PROPTEST_CASES=10 cargo +nightly miri test --workspace --all-features --lib`
 - [ ] MSRV validated with cargo-msrv on Windows when relevant
 - [ ] Relevant manual testing completed
 

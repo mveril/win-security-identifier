@@ -1,6 +1,7 @@
 use version_check::supports_feature;
 
 fn main() {
+    autocfg::emit_possibility("miri");
     // Detect ptr_metadata (trait presence)
     check_feature(
         "ptr_metadata",

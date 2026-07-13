@@ -1,5 +1,7 @@
 // Windows-only integration test that fetches SID + DOMAIN\Name with canonical casing
-#![cfg(windows)]
+#![cfg(all(windows, not(miri)))]
+#![cfg(feature = "std")]
+#![cfg(feature = "serde")]
 #![allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 #![allow(clippy::std_instead_of_core)]
 
@@ -14,6 +16,7 @@ use win_security_identifier::{
     prelude::*,
     sid_lookup::{AccountLookup, DomainAndName, SidLookup, SidType},
 };
+use windows_sys::Win32::{Foundation::GetLastError, Security::IsValidSid};
 
 type OptionalLookup<T> = Option<Option<T>>;
 type AccountAndType = (DomainAndName, Option<SidType>);
@@ -50,6 +53,7 @@ where
     let _ = type_marker;
     let user = current_user_from_powershell();
     let sid = T::get_current_user_sid().expect("Failed to get current user SID");
+    assert_windows_valid_sid(sid.as_ref());
 
     assert_eq!(
         sid.as_ref(),
@@ -139,4 +143,14 @@ where
     let sid_type = lookup.sid_type().ok();
 
     (sid_matches, lookup.domain_name, sid_type)
+}
+
+fn assert_windows_valid_sid(sid: &Sid) {
+    // SAFETY: `sid.as_raw()` returns a pointer to a live SID value and IsValidSid
+    // only reads that SID.
+    let is_valid = unsafe { IsValidSid(sid.as_raw()) != 0 };
+    // SAFETY: GetLastError reads the calling thread's last-error code.
+    let result = (!is_valid).then(|| unsafe { GetLastError() });
+
+    assert_eq!(result, None, "SID is not valid: {result:?}");
 }

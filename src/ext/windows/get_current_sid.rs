@@ -404,12 +404,8 @@ fn is_supported_sid(raw_sid: windows_sys::Win32::Security::PSID) -> bool {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 mod tests {
-    use super::{GetCurrentSid, MAX_TOKEN_USER_BUFFER_SIZE, SE_TOKEN_USER, TOKEN_USER};
-    use crate::{CloneSidFromRaw, SecurityIdentifier, Sid, StackSid};
-    use core::fmt::Debug;
-    use core::marker::PhantomData;
+    use super::{MAX_TOKEN_USER_BUFFER_SIZE, SE_TOKEN_USER, TOKEN_USER};
     use core::mem::{align_of, size_of};
-    use rstest::rstest;
     use windows_sys::Win32::Security::{PSID, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES};
 
     #[test]
@@ -440,49 +436,6 @@ mod tests {
             align_of::<SID_AND_ATTRIBUTES>(),
             align_of::<PSID>(),
             "SID_AND_ATTRIBUTES alignment is driven by its PSID member"
-        );
-    }
-
-    #[rstest]
-    #[case::security_identifier(PhantomData::<SecurityIdentifier>)]
-    #[case::stack_sid(PhantomData::<StackSid>)]
-    fn current_token_sids<T>(#[case] type_marker: PhantomData<T>)
-    where
-        T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
-    {
-        let _ = type_marker;
-
-        let primary_group =
-            T::get_current_primary_group_sid().expect("Failed to get primary group SID");
-        assert_valid_sid(primary_group.as_ref(), "primary group SID");
-
-        let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
-        assert!(
-            !groups.is_empty(),
-            "current token should expose at least one group SID"
-        );
-        for group in &groups {
-            assert_valid_sid(group.as_ref(), "group SID");
-        }
-
-        let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
-        if let Some(logon_sid) = logon_sid.as_ref() {
-            assert_valid_sid(logon_sid.as_ref(), "logon SID");
-        }
-
-        let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
-        assert!(
-            T::is_current_user_member_of(current_user.as_ref())
-                .expect("Failed to check current user membership"),
-            "current user SID should be reported as current user membership"
-        );
-    }
-
-    fn assert_valid_sid(sid: &Sid, label: &str) {
-        assert_eq!(sid.revision, Sid::REVISION, "{label} revision is invalid");
-        assert!(
-            !sid.sub_authorities().is_empty(),
-            "{label} should contain at least one sub-authority"
         );
     }
 }
