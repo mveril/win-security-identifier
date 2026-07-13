@@ -147,7 +147,7 @@ impl StackSid {
             pub const fn last_sub_authority(&self) -> u32;
             #[must_use]
             #[inline]
-            pub fn classification(&self) -> crate::SidClassification;
+            pub const fn classification(&self) -> crate::SidClassification;
         }
 
         to self.as_sid_mut() {
