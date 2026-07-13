@@ -144,7 +144,7 @@ extern crate alloc;
 
 mod sid_classification;
 mod sid_identifier_authority;
-#[cfg(all(test, feature = "alloc"))]
+#[cfg(all(test, feature = "std"))]
 pub(crate) use security_identifier::test::arb_security_identifier;
 
 /// Identifier authority component of a SID (6-byte value).
