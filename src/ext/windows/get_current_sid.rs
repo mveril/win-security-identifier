@@ -106,7 +106,7 @@ impl TokenGroupAttributes {
     }
 }
 
-pub trait GetCurrentSid: OwnedSid + AsRef<Sid> {
+pub trait GetCurrentSid: OwnedSid {
     /// Retrieves the current user's SID from the process token (Windows only).
     ///
     /// # Errors
@@ -266,7 +266,7 @@ pub trait GetCurrentSid: OwnedSid + AsRef<Sid> {
     }
 }
 
-impl<T> GetCurrentSid for T where T: OwnedSid + AsRef<Sid> {}
+impl<T> GetCurrentSid for T where T: OwnedSid {}
 
 fn open_current_process_token() -> Result<OwnedHandle, TokenError> {
     let mut raw_handle_mu: MaybeUninit<RawHandle> = MaybeUninit::uninit();

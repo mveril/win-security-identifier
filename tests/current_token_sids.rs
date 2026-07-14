@@ -13,7 +13,7 @@ use windows_sys::Win32::{Foundation::GetLastError, Security::IsValidSid};
 #[case::stack_sid(PhantomData::<StackSid>)]
 fn current_token_sids<T>(#[case] type_marker: PhantomData<T>)
 where
-    T: OwnedSid + GetCurrentSid + AsRef<Sid> + Debug,
+    T: OwnedSid + GetCurrentSid + Debug,
 {
     let _ = type_marker;
 

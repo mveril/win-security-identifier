@@ -14,7 +14,9 @@ use windows_sys::Win32::Security::PSID;
 /// # Safety
 /// Implementations must return values that own their SID bytes independently of
 /// the constructor inputs. Returned values must not borrow from, store, or
-/// otherwise depend on the lifetime of `sub_authorities`.
+/// otherwise depend on the lifetime of `sub_authorities` or a source [`Sid`].
+/// They must not retain pointers into constructor inputs, and the SID returned
+/// by [`AsRef`] must remain valid for the lifetime of the owned value.
 pub unsafe trait OwnedSid: AsRef<Sid> + Sized + for<'a> From<&'a Sid> {
     /// Creates a new owned SID from validated parts.
     ///
@@ -59,7 +61,7 @@ unsafe impl OwnedSid for StackSid {
         I: Into<SidIdentifierAuthority>,
         S: AsRef<[u32]>,
     {
-        StackSid::try_new(identifier_authority.into(), sub_authorities.as_ref())
+        Self::try_new(identifier_authority.into(), sub_authorities.as_ref())
     }
 
     #[inline]
@@ -69,7 +71,7 @@ unsafe impl OwnedSid for StackSid {
         S: AsRef<[u32]>,
     {
         // SAFETY: Forwarding the caller's unchecked constructor precondition.
-        unsafe { StackSid::new_unchecked(identifier_authority.into(), sub_authorities.as_ref()) }
+        unsafe { Self::new_unchecked(identifier_authority.into(), sub_authorities.as_ref()) }
     }
 }
 
@@ -82,7 +84,7 @@ unsafe impl OwnedSid for SecurityIdentifier {
         I: Into<SidIdentifierAuthority>,
         S: AsRef<[u32]>,
     {
-        SecurityIdentifier::try_new(identifier_authority, sub_authorities)
+        Self::try_new(identifier_authority, sub_authorities)
     }
 
     #[inline]
@@ -92,7 +94,7 @@ unsafe impl OwnedSid for SecurityIdentifier {
         S: AsRef<[u32]>,
     {
         // SAFETY: Forwarding the caller's unchecked constructor precondition.
-        unsafe { SecurityIdentifier::new_unchecked(identifier_authority, sub_authorities) }
+        unsafe { Self::new_unchecked(identifier_authority, sub_authorities) }
     }
 }
 
@@ -123,11 +125,32 @@ unsafe impl OwnedSid for Box<Sid> {
 #[allow(clippy::unwrap_used, reason = "Unwrap is acceptable in tests")]
 mod tests {
     use super::OwnedSid;
-    use crate::{SidIdentifierAuthority, StackSid, well_known};
+    use crate::{InvalidSidParts, SidIdentifierAuthority, StackSid, well_known};
 
     fn try_new_owned_sid<T: OwnedSid>() {
         let sid = T::try_new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]).unwrap();
         assert_eq!(sid.as_ref(), well_known::BUILTIN_ADMINISTRATORS.as_sid());
+    }
+
+    fn try_new_validates_sub_authority_count<T: OwnedSid>() {
+        assert!(matches!(
+            T::try_new(SidIdentifierAuthority::NT_AUTHORITY, []),
+            Err(InvalidSidParts::MissingSubAuthority)
+        ));
+        assert!(T::try_new(SidIdentifierAuthority::NT_AUTHORITY, [0; 15]).is_ok());
+        assert!(matches!(
+            T::try_new(SidIdentifierAuthority::NT_AUTHORITY, [0; 16]),
+            Err(InvalidSidParts::TooManySubAuthorities { count: 16, max: 15 })
+        ));
+    }
+
+    #[cfg(all(windows, feature = "std"))]
+    fn clone_sid_from_raw_copies_as<T: OwnedSid>(source: &crate::Sid) {
+        // SAFETY: `source.as_raw()` remains valid for the duration of the call.
+        let cloned = unsafe { T::clone_sid_from_raw(source.as_raw()) };
+
+        assert_eq!(cloned.as_ref(), source);
+        assert!(!core::ptr::addr_eq(cloned.as_ref(), source));
     }
 
     #[test]
@@ -136,8 +159,8 @@ mod tests {
     }
 
     #[test]
-    fn stack_sid_try_new_rejects_empty_sub_authorities() {
-        assert!(StackSid::try_new(SidIdentifierAuthority::NT_AUTHORITY, &[]).is_err());
+    fn stack_sid_try_new_validates_sub_authority_count() {
+        try_new_validates_sub_authority_count::<StackSid>();
     }
 
     #[cfg(feature = "alloc")]
@@ -150,10 +173,40 @@ mod tests {
 
     #[cfg(feature = "alloc")]
     #[test]
+    fn security_identifier_try_new_validates_sub_authority_count() {
+        use crate::SecurityIdentifier;
+
+        try_new_validates_sub_authority_count::<SecurityIdentifier>();
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
     fn boxed_sid_try_new_builds_owned_sid() {
         use crate::Sid;
         use std::boxed::Box;
 
         try_new_owned_sid::<Box<Sid>>();
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn boxed_sid_try_new_validates_sub_authority_count() {
+        use crate::Sid;
+        use std::boxed::Box;
+
+        try_new_validates_sub_authority_count::<Box<Sid>>();
+    }
+
+    #[cfg(all(windows, feature = "std"))]
+    #[test]
+    fn clone_sid_from_raw_copies_into_independent_storage() {
+        use crate::{SecurityIdentifier, Sid};
+        use std::boxed::Box;
+
+        let source = well_known::BUILTIN_ADMINISTRATORS.as_sid();
+
+        clone_sid_from_raw_copies_as::<StackSid>(source);
+        clone_sid_from_raw_copies_as::<SecurityIdentifier>(source);
+        clone_sid_from_raw_copies_as::<Box<Sid>>(source);
     }
 }
