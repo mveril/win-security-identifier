@@ -31,4 +31,10 @@ pub enum TokenError {
     /// A token information result used an unsupported or impossible size.
     #[error("Token information size is invalid")]
     InvalidTokenInfoSize,
+
+    /// `CheckTokenMembership` failed.
+    ///
+    /// Contains the Win32 error code returned by `GetLastError`.
+    #[error("CheckTokenMembership failed (error {0})")]
+    CheckTokenMembershipFailed(u32),
 }
