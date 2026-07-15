@@ -1,7 +1,7 @@
 [workspace]
 members = [".", "parsing", "macro"]
 resolver = "2"
-package.version = "0.1.1"
+package.version = "0.2.0"
 package.authors = ["Mickaël Véril <mickael.veril@wanadoo.fr>"]
 package.license = "MIT OR Apache-2.0"
 package.edition = "2024"
@@ -11,8 +11,8 @@ package.repository = "https://github.com/mveril/win-security-identifier"
 [workspace.dependencies]
 arrayvec = {version = "0.7", default-features = false}
 thiserror = {version = "2", default-features = false}
-parsing = { path = "parsing", package = "win-security-identifier-parsing", default-features = false, version = "0.1.1"}
-sid_macro = { path = "macro", package = "win-security-identifier-macro", version = "0.1.1"}
+parsing = { path = "parsing", package = "win-security-identifier-parsing", default-features = false, version = "=0.2.0"}
+sid_macro = { path = "macro", package = "win-security-identifier-macro", version = "=0.2.0"}
 
 [package]
 name = "win-security-identifier"
