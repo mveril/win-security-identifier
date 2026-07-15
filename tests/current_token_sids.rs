@@ -6,6 +6,7 @@ use core::fmt::Debug;
 use core::marker::PhantomData;
 use rstest::rstest;
 use win_security_identifier::prelude::*;
+use win_security_identifier::well_known;
 use windows_sys::Win32::{Foundation::GetLastError, Security::IsValidSid};
 
 #[rstest]
@@ -40,6 +41,11 @@ where
         T::is_current_user_member_of(current_user.as_ref())
             .expect("Failed to check current user membership"),
         "current user SID should be reported as current user membership"
+    );
+    assert!(
+        !T::is_current_user_member_of(well_known::NULL.as_sid())
+            .expect("Failed to check null SID membership"),
+        "the effective token should not be a member of the null SID"
     );
 }
 
