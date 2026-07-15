@@ -11,9 +11,9 @@ pub use token_error::TokenError;
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
     Security::{
-        GetLengthSid, GetTokenInformation, SECURITY_MAX_SID_SIZE, TOKEN_GROUPS,
-        TOKEN_INFORMATION_CLASS, TOKEN_PRIMARY_GROUP, TOKEN_QUERY, TOKEN_USER, TokenGroups,
-        TokenPrimaryGroup, TokenUser,
+        CheckTokenMembership, GetLengthSid, GetTokenInformation, SECURITY_MAX_SID_SIZE,
+        TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_PRIMARY_GROUP, TOKEN_QUERY, TOKEN_USER,
+        TokenGroups, TokenPrimaryGroup, TokenUser,
     },
     System::{
         SystemServices::{SE_GROUP_LOGON_ID, SE_TOKEN_USER},
@@ -251,18 +251,29 @@ pub trait GetCurrentSid: OwnedSid {
         Ok(groups.into_iter().next().map(|(sid, _)| sid))
     }
 
-    /// Checks whether the given SID is present in the current user SID or token group SIDs.
+    /// Checks whether the effective security token is a member of the given SID.
+    ///
+    /// Windows checks the calling thread's impersonation token when one is active;
+    /// otherwise it checks the current process token. Disabled and deny-only groups
+    /// do not grant membership.
     ///
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
     #[inline]
     fn is_current_user_member_of(sid: &Sid) -> Result<bool, TokenError> {
-        let current_user = Self::get_current_user_sid()?;
-        if current_user.as_ref() == sid {
-            return Ok(true);
+        let mut is_member = 0;
+        // SAFETY: A null token handle asks Windows to use the effective token.
+        // sid.as_raw() remains valid for the duration of the call, and
+        // is_member is writable output storage.
+        let succeeded =
+            unsafe { CheckTokenMembership(ptr::null_mut(), sid.as_raw(), &raw mut is_member) };
+        if succeeded == 0 {
+            // SAFETY: GetLastError is called immediately after the failing FFI call.
+            return Err(TokenError::CheckTokenMembershipFailed(unsafe {
+                GetLastError()
+            }));
         }
-        current_token_group_entries::<Self>(|group_sid, _| group_sid == sid)
-            .map(|groups| !groups.is_empty())
+        Ok(is_member != 0)
     }
 }
 
