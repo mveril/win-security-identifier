@@ -68,9 +68,67 @@ jobs:
             exit 1
           fi
 
-  validate-and-release:
+  semver-checks:
     if: ${{ needs.determine-tag.outputs.tag_name != '' }}
     needs: determine-tag
+    runs-on: ${{ matrix.os }}
+    name: "SemVer checks (${{ matrix.target }})"
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TARGET: ${{ matrix.target }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-tag.outputs.tag_name }}
+
+      - name: Prepare latest stable Rust toolchain
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add --toolchain stable "${TARGET}"
+
+      - name: Cache cargo-semver-checks
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-semver-checks-registry-v1
+
+      - name: Install cargo-semver-checks
+        shell: bash
+        run: |
+          cargo install cargo-semver-checks --locked
+
+      - name: Show SemVer tool versions
+        shell: bash
+        run: |
+          rustc -Vv
+          cargo -V
+          cargo semver-checks --version
+
+      - name: Check SemVer compatibility
+        shell: bash
+        run: |
+          cargo semver-checks check-release --workspace --manifest-path Cargo.toml --target "${TARGET}"
+
+  validate-and-release:
+    if: ${{ needs.determine-tag.outputs.tag_name != '' }}
+    needs: [determine-tag, semver-checks]
     runs-on: ubuntu-latest
     env:
       TAG_NAME: ${{ needs.determine-tag.outputs.tag_name }}

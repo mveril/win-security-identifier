@@ -17,6 +17,69 @@ defaults:
     shell: bash
 
 jobs:
+  semver_checks:
+    name: SemVer checks (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TARGET: ${{ matrix.target }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare latest stable Rust toolchain
+        run: |
+          rustup set profile minimal
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add --toolchain stable "${TARGET}"
+
+      - name: Cache cargo-semver-checks
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-semver-checks-registry-v1
+
+      - name: Install cargo-semver-checks
+        run: |
+          cargo install cargo-semver-checks --locked
+
+      - name: Show SemVer tool versions
+        run: |
+          rustc -Vv
+          cargo -V
+          cargo semver-checks --version
+
+      - name: Check SemVer compatibility
+        run: |
+          cargo semver-checks check-release --workspace --manifest-path Cargo.toml --target "${TARGET}"
+
+  semver_compatibility:
+    name: SemVer compatibility
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ always() }}
+    needs: semver_checks
+    steps:
+      - name: Require every SemVer target to pass
+        env:
+          SEMVER_RESULT: ${{ needs.semver_checks.result }}
+        run: test "${SEMVER_RESULT}" = "success"
+
   msrv-windows:
     name: MSRV validation (Windows)
     runs-on: windows-latest
