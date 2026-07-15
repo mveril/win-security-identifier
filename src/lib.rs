@@ -122,7 +122,7 @@ pub use account_sid::{AccountSid, NotAccountSid};
 #[cfg(doc)]
 use core::alloc::Layout;
 #[cfg(all(windows, feature = "std"))]
-pub use ext::{CloneSidFromRaw, GetCurrentSid, TokenError};
+pub use ext::{GetCurrentSid, TokenError};
 #[cfg(feature = "alloc")]
 pub use security_identifier::SecurityIdentifier;
 #[cfg(all(windows, feature = "std"))]
@@ -132,6 +132,7 @@ pub use sid::sid_lookup::LookupAccountName;
 mod ext;
 mod invalid_sid_binary_format;
 mod invalid_sid_parts;
+mod owned_sid;
 
 #[cfg(not(has_ptr_metadata))]
 pub(crate) mod polyfills_ptr;
@@ -169,6 +170,7 @@ pub(crate) mod internal;
 pub use const_sid::ConstSid;
 pub use invalid_sid_binary_format::InvalidSidBinaryFormat;
 pub use invalid_sid_parts::InvalidSidParts;
+pub use owned_sid::OwnedSid;
 
 pub use parsing::InvalidSidFormat;
 

@@ -1,7 +1,7 @@
 use super::Error;
 use super::SidType;
 use super::domain_and_name::DomainAndName;
-use crate::CloneSidFromRaw;
+use crate::OwnedSid;
 use core::ptr::{null, null_mut};
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 use smallvec::SmallVec;
@@ -15,7 +15,7 @@ type LookupBuffer = SmallVec<[u16; 256]>;
 type SidBuffer = SmallVec<[u8; 128]>;
 
 /// Result of a Windows account-name lookup.
-pub struct AccountLookup<T: CloneSidFromRaw> {
+pub struct AccountLookup<T: OwnedSid> {
     /// The SID associated with the account name.
     pub sid: T,
     /// The canonical domain and account name returned by Windows.
@@ -24,7 +24,7 @@ pub struct AccountLookup<T: CloneSidFromRaw> {
     pub sid_type_raw: i32,
 }
 
-impl<T: CloneSidFromRaw> AccountLookup<T> {
+impl<T: OwnedSid> AccountLookup<T> {
     /// Get the SID type as an enum.
     /// # Errors
     /// Return a [`TryFromPrimitiveError<SidType>`] error if the raw SID type value is unknown.
@@ -79,7 +79,7 @@ impl<'a> AccountLookupOperation<'a> {
         })
     }
 
-    fn process<T: CloneSidFromRaw>(mut self) -> Result<AccountLookup<T>, Error> {
+    fn process<T: OwnedSid>(mut self) -> Result<AccountLookup<T>, Error> {
         let mut sid_buffer = SidBuffer::with_capacity(self.sid_len as usize);
         let mut domain_buffer = LookupBuffer::with_capacity(self.domain_len as usize);
         let machine_name_ptr = self.machine_name.map_or(null(), |s| s.as_ptr());
@@ -145,7 +145,7 @@ fn account_name_component(account_name: &U16CString) -> OsString {
 }
 
 /// Performs Windows account-name lookups and returns the SID as `Self`.
-pub trait LookupAccountName: CloneSidFromRaw {
+pub trait LookupAccountName: OwnedSid {
     /// Performs a lookup of an account name on the local machine.
     #[inline]
     #[must_use]
@@ -173,4 +173,4 @@ pub trait LookupAccountName: CloneSidFromRaw {
     }
 }
 
-impl<T> LookupAccountName for T where T: CloneSidFromRaw {}
+impl<T> LookupAccountName for T where T: OwnedSid {}
