@@ -61,7 +61,7 @@ use core::{
 #[repr(C)]
 pub struct Sid {
     /// The SID revision value, (currently only 1 is supported).
-    pub(crate) revision: u8,
+    revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
@@ -90,7 +90,43 @@ impl Sid {
     #[must_use]
     #[inline]
     pub const fn revision(&self) -> u8 {
+        debug_assert!(
+            self.revision == Self::REVISION,
+            "SID revision invariant violated"
+        );
         self.revision
+    }
+
+    /// Initializes an allocated SID from validated parts.
+    ///
+    /// # Safety
+    /// `sid_ptr` must point to writable storage sized for `sub_authorities`, and
+    /// the sub-authority count must be valid for a Windows SID.
+    #[cfg(feature = "alloc")]
+    pub(crate) unsafe fn initialize(
+        sid_ptr: *mut Self,
+        sub_authority_count: u8,
+        identifier_authority: SidIdentifierAuthority,
+        sub_authorities: &[u32],
+    ) {
+        debug_assert!(
+            sub_authority_count as usize == sub_authorities.len()
+                && sub_authorities.len() >= MIN_SUBAUTHORITY_COUNT as usize
+                && sub_authorities.len() <= MAX_SUBAUTHORITY_COUNT as usize,
+            "SID sub-authority count invariant violated"
+        );
+        #[expect(
+            clippy::multiple_unsafe_ops_per_block,
+            reason = "all writes initialize the same SID allocation"
+        )]
+        // SAFETY: The caller guarantees that the destination allocation is
+        // writable and sized for the supplied sub-authorities.
+        unsafe {
+            (*sid_ptr).revision = Self::REVISION;
+            (*sid_ptr).sub_authority_count = sub_authority_count;
+            (*sid_ptr).identifier_authority = identifier_authority;
+            (*sid_ptr).sub_authorities.copy_from_slice(sub_authorities);
+        }
     }
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
     ///

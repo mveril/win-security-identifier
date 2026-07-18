@@ -52,7 +52,7 @@ where
     [u32; N]: SidLenValid,
 {
     /// SID revision (commonly `1`).
-    pub(crate) revision: u8,
+    revision: u8,
     // Always equals N; kept private to preserve invariant.
     sub_authority_count: u8,
     /// 6-byte identifier authority.
@@ -119,6 +119,10 @@ where
     #[must_use]
     #[inline]
     pub const fn revision(&self) -> u8 {
+        debug_assert!(
+            self.revision == Sid::REVISION,
+            "SID revision invariant violated"
+        );
         self.revision
     }
 
@@ -315,7 +319,7 @@ where
     type Error = TryFromSliceError;
     #[inline]
     fn try_from(value: &Sid) -> Result<Self, Self::Error> {
-        let revision = value.revision;
+        let revision = value.revision();
         let identifier_authority = value.identifier_authority;
         let sub_authority: [u32; N] = value.sub_authorities().try_into()?;
         Ok(Self {

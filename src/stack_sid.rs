@@ -20,7 +20,7 @@ use delegate::delegate;
 #[repr(C)]
 pub struct StackSid {
     /// The SID revision value, (currently only 1 is supported).
-    pub(crate) revision: u8,
+    revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
@@ -33,6 +33,10 @@ impl StackSid {
     #[must_use]
     #[inline]
     pub const fn revision(&self) -> u8 {
+        debug_assert!(
+            self.revision == Sid::REVISION,
+            "SID revision invariant violated"
+        );
         self.revision
     }
 
