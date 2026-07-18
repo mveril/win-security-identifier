@@ -1,6 +1,6 @@
 use crate::sid::Sid;
 mod token_error;
-use crate::OwnedSid;
+use crate::CloneSidFromRaw;
 use crate::utils::validate_sid_bytes_unaligned;
 use core::mem::{MaybeUninit, align_of, size_of};
 use core::ptr;
@@ -106,7 +106,7 @@ impl TokenGroupAttributes {
     }
 }
 
-pub trait GetCurrentSid: OwnedSid {
+pub trait GetCurrentSid: CloneSidFromRaw {
     /// Retrieves the current user's SID from the process token (Windows only).
     ///
     /// # Errors
@@ -277,7 +277,7 @@ pub trait GetCurrentSid: OwnedSid {
     }
 }
 
-impl<T> GetCurrentSid for T where T: OwnedSid {}
+impl<T> GetCurrentSid for T where T: CloneSidFromRaw {}
 
 fn open_current_process_token() -> Result<OwnedHandle, TokenError> {
     let mut raw_handle_mu: MaybeUninit<RawHandle> = MaybeUninit::uninit();
@@ -356,7 +356,7 @@ fn current_token_group_entries<T>(
     mut filter: impl FnMut(&Sid, TokenGroupAttributes) -> bool,
 ) -> Result<Box<[(T, TokenGroupAttributes)]>, TokenError>
 where
-    T: OwnedSid,
+    T: CloneSidFromRaw,
 {
     let token_handle = open_current_process_token()?;
     let buffer = query_token_information(token_handle.as_raw_handle(), TokenGroups)?;
