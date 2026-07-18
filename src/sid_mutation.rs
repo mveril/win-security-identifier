@@ -240,6 +240,64 @@ mod tests {
         assert_eq!(sid.capacity(), capacity);
     }
 
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_reallocates_reuses_and_shrinks_before_drop() {
+        let mut sid = heap(&[1]);
+        sid.try_reserve(14).expect("the Windows maximum fits");
+        assert_eq!(sid.capacity(), 15);
+        sid.try_extend_sub_authorities(2..=15)
+            .expect("the reserved tail is writable");
+        assert_eq!(sid.sub_authorities().len(), 15);
+
+        sid.try_pop_sub_authorities(10)
+            .expect("one logical value remains");
+        assert_eq!(sid.sub_authorities(), [1, 2, 3, 4, 5]);
+        assert_eq!(sid.capacity(), 15);
+        sid.try_extend_sub_authorities([16, 17, 18, 19, 20])
+            .expect("spare capacity is reused");
+        assert_eq!(sid.sub_authorities().len(), 10);
+
+        sid.try_truncate_sub_authorities(2)
+            .expect("the SID remains non-empty");
+        sid.shrink_to_fit();
+        assert_eq!(sid.capacity(), 2);
+        assert_eq!(sid.sub_authorities(), [1, 2]);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_clone_from_uses_spare_capacity_and_drops_cleanly() {
+        let mut destination = heap(&[10]);
+        destination
+            .try_reserve(14)
+            .expect("the Windows maximum fits");
+        let capacity = destination.capacity();
+        let source = heap(&[20, 21, 22]);
+
+        destination.clone_from(&source);
+
+        assert_eq!(destination.sub_authorities(), [20, 21, 22]);
+        assert_eq!(destination.capacity(), capacity);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_box_roundtrip_shrinks_physical_capacity_before_box_drop() {
+        let mut sid = heap(&[7]);
+        sid.try_reserve(14).expect("the Windows maximum fits");
+        sid.try_extend_sub_authorities([8, 9, 10])
+            .expect("reserved capacity is writable");
+        sid.try_truncate_sub_authorities(2)
+            .expect("the SID remains non-empty");
+
+        let boxed: Box<crate::Sid> = sid.into();
+        assert_eq!(boxed.sub_authorities(), [7, 8]);
+        let sid_again: SecurityIdentifier = boxed.into();
+        assert_eq!(sid_again.sub_authorities(), [7, 8]);
+        assert_eq!(sid_again.capacity(), 2);
+    }
+
     #[test]
     fn stack_extend_overflow_is_transactional() {
         let mut sid = stack(&[1, 2]);
