@@ -161,7 +161,7 @@ mod tests {
     }
 
     #[cfg(feature = "alloc")]
-    fn assert_exact_heap_layout(sid: &SecurityIdentifier) {
+    fn assert_logical_heap_layout(sid: &SecurityIdentifier) {
         let count =
             u8::try_from(sid.sub_authorities().len()).expect("a valid SID count always fits in u8");
         let expected = SidSizeInfo::from_count(count).expect("count belongs to a valid SID");
@@ -189,25 +189,55 @@ mod tests {
     #[test]
     fn heap_push_extend_pop_and_truncate_keep_exact_layout() {
         let mut sid = heap(&[1]);
-        assert_exact_heap_layout(&sid);
+        assert_eq!(sid.capacity(), 1);
+        assert_logical_heap_layout(&sid);
 
         sid.try_push_sub_authority(2).expect("capacity remains");
         assert_eq!(sid.sub_authorities(), [1, 2]);
-        assert_exact_heap_layout(&sid);
+        assert_eq!(sid.capacity(), 2);
+        assert_logical_heap_layout(&sid);
 
         sid.try_extend_sub_authorities([3, 4])
             .expect("capacity remains");
         assert_eq!(sid.sub_authorities(), [1, 2, 3, 4]);
-        assert_exact_heap_layout(&sid);
+        assert_eq!(sid.capacity(), 4);
+        assert_logical_heap_layout(&sid);
 
         assert_eq!(sid.try_pop_sub_authority(), Ok(4));
         assert_eq!(sid.sub_authorities(), [1, 2, 3]);
-        assert_exact_heap_layout(&sid);
+        assert_eq!(sid.capacity(), 4);
+        assert_logical_heap_layout(&sid);
 
         sid.try_truncate_sub_authorities(1)
             .expect("one sub-authority remains");
         assert_eq!(sid.sub_authorities(), [1]);
-        assert_exact_heap_layout(&sid);
+        assert_eq!(sid.capacity(), 4);
+        assert_logical_heap_layout(&sid);
+
+        sid.shrink_to_fit();
+        assert_eq!(sid.capacity(), 1);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_try_reserve_reuses_spare_capacity_and_rejects_windows_overflow() {
+        let mut sid = heap(&[1, 2]);
+        sid.try_reserve(5).expect("seven values fit in a SID");
+        let capacity = sid.capacity();
+        assert!(capacity >= 7);
+
+        sid.try_extend_sub_authorities([3, 4, 5])
+            .expect("reserved capacity is sufficient");
+        assert_eq!(sid.capacity(), capacity);
+
+        assert_eq!(
+            sid.try_reserve(11),
+            Err(ExtendSubAuthoritiesError::TooManySubAuthorities {
+                current: 5,
+                max: 15,
+            })
+        );
+        assert_eq!(sid.capacity(), capacity);
     }
 
     #[test]
@@ -241,7 +271,7 @@ mod tests {
             })
         );
         assert_eq!(sid, before);
-        assert_exact_heap_layout(&sid);
+        assert_logical_heap_layout(&sid);
     }
 
     #[test]
@@ -344,13 +374,13 @@ mod tests {
             let heap_extend = heap_sid.try_extend_sub_authorities(additions.iter().copied());
             prop_assert_eq!(stack_extend, heap_extend);
             prop_assert_eq!(stack_sid.as_sid(), heap_sid.as_sid());
-            assert_exact_heap_layout(&heap_sid);
+            assert_logical_heap_layout(&heap_sid);
 
             let stack_pop = stack_sid.try_pop_sub_authorities(requested_pop);
             let heap_pop = heap_sid.try_pop_sub_authorities(requested_pop);
             prop_assert_eq!(stack_pop, heap_pop);
             prop_assert_eq!(stack_sid.as_sid(), heap_sid.as_sid());
-            assert_exact_heap_layout(&heap_sid);
+            assert_logical_heap_layout(&heap_sid);
         }
     }
 }
