@@ -52,7 +52,7 @@ where
     [u32; N]: SidLenValid,
 {
     /// SID revision (commonly `1`).
-    pub revision: u8,
+    pub(crate) revision: u8,
     // Always equals N; kept private to preserve invariant.
     sub_authority_count: u8,
     /// 6-byte identifier authority.
@@ -115,6 +115,13 @@ impl<const N: usize> ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    /// Returns the SID revision.
+    #[must_use]
+    #[inline]
+    pub const fn revision(&self) -> u8 {
+        self.revision
+    }
+
     /// Creates a new `ConstSid<N>` after validating the sub-authority count.
     ///
     /// Returns `None` if `N` is outside the valid Windows range (1..=15).
@@ -457,7 +464,7 @@ mod test {
     #[test]
     fn test_const_sid_macro() {
         let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
-        assert_eq!(sid.revision, Sid::REVISION);
+        assert_eq!(sid.revision(), Sid::REVISION);
         assert_eq!(
             sid.identifier_authority,
             SidIdentifierAuthority::NT_AUTHORITY

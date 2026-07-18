@@ -20,7 +20,7 @@ use delegate::delegate;
 #[repr(C)]
 pub struct StackSid {
     /// The SID revision value, (currently only 1 is supported).
-    pub revision: u8,
+    pub(crate) revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
@@ -29,6 +29,13 @@ pub struct StackSid {
 }
 
 impl StackSid {
+    /// Returns the SID revision.
+    #[must_use]
+    #[inline]
+    pub const fn revision(&self) -> u8 {
+        self.revision
+    }
+
     /// Owned, stack-allocated Windows **Security Identifier** (SID).
     ///
     /// It can be constructed from raw parts, parsed from text, cloned,
@@ -42,7 +49,7 @@ impl StackSid {
     /// let subs = [32u32, 544u32];
     /// let sid = StackSid::try_new(ia, &subs)
     ///     .expect("valid SID parts");
-    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.revision(), 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
@@ -77,7 +84,7 @@ impl StackSid {
     ///         SidIdentifierAuthority::NT_AUTHORITY,
     ///         &[32u32, 544u32],
     ///     )};
-    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.revision(), 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
@@ -185,7 +192,7 @@ impl StackSid {
     ///     20, 0, 0, 0, // sub_authority[0]
     /// ];
     /// let sid = StackSid::from_bytes(&bytes).expect("valid SID parts");
-    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.revision(), 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [20u32]);
     /// ```
