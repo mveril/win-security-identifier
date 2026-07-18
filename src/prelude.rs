@@ -1,8 +1,10 @@
 //! Common imports for working with Windows Security Identifiers.
 
 pub use crate::{
-    AccountSid, ConstSid, InvalidSidBinaryFormat, InvalidSidFormat, InvalidSidParts, NotAccountSid,
-    OwnedSid, Sid, SidClassification, SidIdentifierAuthority, StackSid,
+    AccountSid, ConstSid, ExtendSubAuthoritiesError, InvalidSidBinaryFormat, InvalidSidFormat,
+    InvalidSidParts, NotAccountSid, OwnedSid, PopSubAuthoritiesError, PopSubAuthorityError,
+    PoppedSubAuthorities, PushSubAuthorityError, Sid, SidClassification, SidIdentifierAuthority,
+    StackSid, TruncateSubAuthoritiesError,
 };
 
 #[cfg(feature = "alloc")]

@@ -117,6 +117,7 @@ mod account_sid;
 #[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
+mod sid_mutation;
 
 pub use account_sid::{AccountSid, NotAccountSid};
 #[cfg(doc)]
@@ -155,6 +156,10 @@ pub use sid_identifier_authority::SidIdentifierAuthority;
 
 pub use sid::Sid;
 pub use sid_classification::SidClassification;
+pub use sid_mutation::{
+    ExtendSubAuthoritiesError, PopSubAuthoritiesError, PopSubAuthorityError, PoppedSubAuthorities,
+    PushSubAuthorityError, TruncateSubAuthoritiesError,
+};
 
 #[cfg(test)]
 #[allow(unused_imports)]

@@ -9,6 +9,10 @@ use crate::StackSid;
 use crate::internal::SidLenValid;
 use crate::utils;
 use crate::utils::validate_sid_bytes_unaligned;
+use crate::{
+    ExtendSubAuthoritiesError, PopSubAuthoritiesError, PopSubAuthorityError, PoppedSubAuthorities,
+    PushSubAuthorityError, TruncateSubAuthoritiesError,
+};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{borrow::ToOwned, boxed::Box};
 use core::alloc::Layout;
@@ -20,7 +24,7 @@ use core::borrow::{Borrow, BorrowMut};
 use core::ops::DerefMut;
 use core::str::FromStr;
 use delegate::delegate;
-use maybe_uninit::MaybeUninitSecurityIdentifier;
+use maybe_uninit::{MaybeUninitSecurityIdentifier, grow_box, shrink_box};
 use parsing::SidComponents;
 #[cfg(feature = "std")]
 use std::borrow::ToOwned;
@@ -58,6 +62,145 @@ impl Debug for SecurityIdentifier {
 }
 
 impl SecurityIdentifier {
+    fn grow_by(&mut self, appended: &[u32]) {
+        let new_count = self.sub_authorities().len() + appended.len();
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "all callers validate the Windows sub-authority limit"
+        )]
+        let new_count = new_count as u8;
+        // SAFETY: all callers validate the resulting count as 1..=15.
+        let size_info = unsafe { SidSizeInfo::from_count(new_count).unwrap_unchecked() };
+        // SAFETY: the new count is the old count plus `appended.len()`.
+        unsafe { grow_box(&mut self.inner, &size_info, appended) };
+    }
+
+    fn shrink_to(&mut self, new_count: usize) {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "all callers validate the Windows sub-authority limit"
+        )]
+        let new_count = new_count as u8;
+        // SAFETY: all callers validate the resulting count as 1..=15.
+        let size_info = unsafe { SidSizeInfo::from_count(new_count).unwrap_unchecked() };
+        // SAFETY: callers only request a strictly smaller, non-zero count.
+        unsafe { shrink_box(&mut self.inner, &size_info) };
+    }
+
+    /// Appends one sub-authority and grows the allocation by exactly four bytes.
+    ///
+    /// # Errors
+    /// Returns [`PushSubAuthorityError`] if the SID already has 15 sub-authorities.
+    #[inline]
+    pub fn try_push_sub_authority(&mut self, value: u32) -> Result<(), PushSubAuthorityError> {
+        if self.sub_authorities().len() == crate::sid_mutation::max_sub_authorities() {
+            return Err(PushSubAuthorityError::MaximumSubAuthoritiesReached {
+                max: crate::sid_mutation::max_sub_authorities(),
+            });
+        }
+        self.grow_by(core::slice::from_ref(&value));
+        Ok(())
+    }
+
+    /// Collects and appends an iterator with one exact reallocation.
+    ///
+    /// The SID is left unchanged if the iterator exceeds the available capacity.
+    ///
+    /// # Errors
+    /// Returns [`ExtendSubAuthoritiesError`] if the iterator would exceed 15 values.
+    #[inline]
+    pub fn try_extend_sub_authorities<I>(
+        &mut self,
+        values: I,
+    ) -> Result<(), ExtendSubAuthoritiesError>
+    where
+        I: IntoIterator<Item = u32>,
+    {
+        let current = self.sub_authorities().len();
+        let max = crate::sid_mutation::max_sub_authorities();
+        let mut pending = arrayvec::ArrayVec::<u32, 15>::new();
+        for value in values {
+            if current + pending.len() == max || pending.try_push(value).is_err() {
+                return Err(ExtendSubAuthoritiesError::TooManySubAuthorities { current, max });
+            }
+        }
+        if !pending.is_empty() {
+            self.grow_by(pending.as_slice());
+        }
+        Ok(())
+    }
+
+    /// Removes and returns the final sub-authority, shrinking the allocation.
+    ///
+    /// # Errors
+    /// Returns [`PopSubAuthorityError`] if removing the value would empty the SID.
+    #[inline]
+    pub fn try_pop_sub_authority(&mut self) -> Result<u32, PopSubAuthorityError> {
+        let current = self.sub_authorities().len();
+        if current == 1 {
+            return Err(PopSubAuthorityError::CannotRemoveLastSubAuthority);
+        }
+        let value = self.last_sub_authority();
+        self.shrink_to(current - 1);
+        Ok(value)
+    }
+
+    /// Removes several trailing sub-authorities with one exact reallocation.
+    ///
+    /// Removed values are returned in their original order.
+    ///
+    /// # Errors
+    /// Returns [`PopSubAuthoritiesError`] if `count` would empty the SID.
+    #[inline]
+    pub fn try_pop_sub_authorities(
+        &mut self,
+        count: usize,
+    ) -> Result<PoppedSubAuthorities, PopSubAuthoritiesError> {
+        let current = self.sub_authorities().len();
+        let available = current - 1;
+        if count > available {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        }
+        let new_count = current - count;
+        let Some(tail) = self.sub_authorities().get(new_count..) else {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        };
+        let Some(removed) = PoppedSubAuthorities::try_from_slice(tail) else {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        };
+        if count != 0 {
+            self.shrink_to(new_count);
+        }
+        Ok(removed)
+    }
+
+    /// Truncates trailing sub-authorities, shrinking the allocation when needed.
+    ///
+    /// # Errors
+    /// Returns [`TruncateSubAuthoritiesError`] when `new_len` is zero.
+    #[inline]
+    pub fn try_truncate_sub_authorities(
+        &mut self,
+        new_len: usize,
+    ) -> Result<(), TruncateSubAuthoritiesError> {
+        if new_len == 0 {
+            return Err(TruncateSubAuthoritiesError::EmptySid);
+        }
+        if new_len < self.sub_authorities().len() {
+            self.shrink_to(new_len);
+        }
+        Ok(())
+    }
+
     /// Creates a new `SecurityIdentifier` from parts, returning a typed error on invalid input.
     ///
     /// # Parameters
