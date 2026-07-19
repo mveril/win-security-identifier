@@ -168,6 +168,8 @@ mod tests {
             u8::try_from(sid.sub_authorities().len()).expect("a valid SID count always fits in u8");
         let expected = SidSizeInfo::from_count(count).expect("count belongs to a valid SID");
         assert_eq!(Layout::for_value(sid.as_sid()), expected.layout());
+        assert!((1..=sid.capacity()).contains(&sid.sub_authorities().len()));
+        assert!(sid.capacity() <= max_sub_authorities());
     }
 
     #[test]
@@ -269,6 +271,53 @@ mod tests {
 
     #[cfg(feature = "alloc")]
     #[test]
+    fn heap_shrink_to_fit_at_exact_capacity_is_a_noop() {
+        let mut sid = heap(&[1, 2, 3]);
+        let pointer = sid.as_bytes().as_ptr();
+        sid.shrink_to_fit();
+        assert_eq!(sid.capacity(), 3);
+        assert_eq!(sid.as_bytes().as_ptr(), pointer);
+        assert_eq!(sid.sub_authorities(), [1, 2, 3]);
+        assert_logical_heap_layout(&sid);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_repeatedly_grows_shrinks_and_grows_again() {
+        let mut sid = heap(&[1]);
+        for end in [4_u32, 8, 15] {
+            sid.try_extend_sub_authorities(2..=end)
+                .expect("the requested values fit");
+            assert_eq!(sid.sub_authorities().len(), end as usize);
+            assert_logical_heap_layout(&sid);
+            sid.try_truncate_sub_authorities(NonZeroUsize::new(1).unwrap())
+                .expect("one sub-authority remains");
+            sid.shrink_to_fit();
+            assert_eq!(sid.capacity(), 1);
+            assert_eq!(sid.sub_authorities(), [1]);
+            assert_logical_heap_layout(&sid);
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_growth_follows_doubling_strategy_up_to_windows_maximum() {
+        let mut sid = heap(&[1]);
+        for (target, expected_capacity) in [(2_usize, 2_usize), (4, 4), (8, 8), (15, 15)] {
+            while sid.sub_authorities().len() < target {
+                let value = u32::try_from(sid.sub_authorities().len())
+                    .expect("a valid SID count fits in u32")
+                    + 1;
+                sid.try_push_sub_authority(value)
+                    .expect("the Windows maximum has not been reached");
+            }
+            assert_eq!(sid.capacity(), expected_capacity);
+            assert_logical_heap_layout(&sid);
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
     fn heap_clone_from_uses_spare_capacity_and_drops_cleanly() {
         let mut destination = heap(&[10]);
         destination
@@ -281,6 +330,17 @@ mod tests {
 
         assert_eq!(destination.sub_authorities(), [20, 21, 22]);
         assert_eq!(destination.capacity(), capacity);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_clone_from_grows_destination_allocation() {
+        let mut destination = heap(&[10]);
+        let source = heap(&[20, 21, 22, 23, 24]);
+        destination.clone_from(&source);
+        assert_eq!(destination, source);
+        assert!(destination.capacity() >= source.sub_authorities().len());
+        assert_logical_heap_layout(&destination);
     }
 
     #[cfg(feature = "alloc")]
@@ -422,6 +482,9 @@ mod tests {
             initial in proptest::collection::vec(any::<u32>(), 1..=15),
             additions in proptest::collection::vec(any::<u32>(), 0..=15),
             requested_pop in 0usize..=15,
+            reserve in 0usize..=15,
+            pushed in any::<u32>(),
+            truncate_to in 1usize..=15,
         ) {
             let mut stack_sid = stack(&initial);
             let mut heap_sid = heap(&initial);
@@ -436,6 +499,34 @@ mod tests {
             let heap_pop = heap_sid.try_pop_sub_authorities(requested_pop);
             prop_assert_eq!(stack_pop, heap_pop);
             prop_assert_eq!(stack_sid.as_sid(), heap_sid.as_sid());
+            assert_logical_heap_layout(&heap_sid);
+
+            let length_before_reserve = heap_sid.sub_authorities().len();
+            let capacity_before_reserve = heap_sid.capacity();
+            let reserve_result = heap_sid.try_reserve(reserve);
+            if reserve <= 15 - length_before_reserve {
+                prop_assert_eq!(reserve_result, Ok(()));
+                prop_assert!(heap_sid.capacity() >= length_before_reserve + reserve);
+            } else {
+                prop_assert!(reserve_result.is_err());
+                prop_assert_eq!(heap_sid.capacity(), capacity_before_reserve);
+            }
+            assert_logical_heap_layout(&heap_sid);
+
+            let push_result = heap_sid.try_push_sub_authority(pushed);
+            if length_before_reserve < 15 {
+                prop_assert_eq!(push_result, Ok(()));
+            } else {
+                prop_assert!(push_result.is_err());
+            }
+            assert_logical_heap_layout(&heap_sid);
+
+            heap_sid
+                .try_truncate_sub_authorities(NonZeroUsize::new(truncate_to).unwrap())
+                .expect("a non-zero truncation length is valid");
+            assert_logical_heap_layout(&heap_sid);
+            heap_sid.shrink_to_fit();
+            prop_assert_eq!(heap_sid.capacity(), heap_sid.sub_authorities().len());
             assert_logical_heap_layout(&heap_sid);
         }
     }

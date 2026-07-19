@@ -73,6 +73,9 @@ use std::{alloc, borrow::ToOwned};
 /// println!("{}", sid); // e.g., "S-1-5-32-544"
 /// ```
 pub struct SecurityIdentifier {
+    // Points to a global-allocator allocation aligned for `SidHead`. Its layout
+    // corresponds to `capacity`; the initialized SID length is stored in
+    // `SidHead::sub_authority_count` and never exceeds that capacity.
     inner: NonNull<u8>,
     capacity: u8,
 }
@@ -619,19 +622,18 @@ impl Clone for SecurityIdentifier {
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         let source_len = source.sub_authorities().len();
-        if self.capacity() >= source_len {
-            let source_size = SidSizeInfo::from_count(source_len as u8)
-                .map(|info| info.layout().size())
-                .unwrap_or_default();
-            debug_assert_ne!(source_size, 0);
-            // SAFETY: capacity is sufficient for the complete logical source SID.
-            unsafe {
-                self.inner
-                    .as_ptr()
-                    .copy_from_nonoverlapping(source.inner.as_ptr(), source_size);
-            }
-        } else {
-            *self = source.clone();
+        let additional = source_len.saturating_sub(self.sub_authorities().len());
+        self.reserve_for(additional);
+        let source_size = SidSizeInfo::from_count(source_len as u8)
+            .map(|info| info.layout().size())
+            .unwrap_or_default();
+        debug_assert_ne!(source_size, 0);
+        // SAFETY: reserve_for guarantees sufficient capacity for the complete
+        // logical source SID, and mutable and shared references cannot alias.
+        unsafe {
+            self.inner
+                .as_ptr()
+                .copy_from_nonoverlapping(source.inner.as_ptr(), source_size);
         }
     }
 }
