@@ -93,7 +93,7 @@ impl SecurityIdentifier {
         // SAFETY: reserve guarantees enough storage, and the destination is the
         // uninitialized tail immediately following the logical SID.
         unsafe {
-            let sid_ptr = from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), new_count);
+            let sid_ptr: *mut Sid = from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), new_count);
             addr_of_mut!((*sid_ptr).sub_authorities)
                 .cast::<u32>()
                 .add(old_count)
