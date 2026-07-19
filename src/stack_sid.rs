@@ -9,6 +9,7 @@ use core::hash::Hash;
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
+use crate::sid_mutation::MAX_SUB_AUTHORITIES;
 use crate::utils::{self, validate_sid_bytes_unaligned};
 use crate::{ConstSid, InvalidSidBinaryFormat, InvalidSidParts, Sid, SidIdentifierAuthority};
 use crate::{
@@ -17,6 +18,7 @@ use crate::{
 };
 use core::fmt::{self, Display};
 use core::mem::{MaybeUninit, size_of, size_of_val};
+use core::num::NonZeroUsize;
 use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
@@ -79,8 +81,8 @@ impl StackSid {
         I: IntoIterator<Item = u32>,
     {
         let current = self.sub_authority_count as usize;
-        let max = crate::sid_mutation::max_sub_authorities();
-        let mut pending = arrayvec::ArrayVec::<u32, 15>::new();
+        let max: usize = crate::sid_mutation::max_sub_authorities();
+        let mut pending = arrayvec::ArrayVec::<u32, MAX_SUB_AUTHORITIES>::new();
         for value in values {
             if current + pending.len() == max || pending.try_push(value).is_err() {
                 return Err(ExtendSubAuthoritiesError::TooManySubAuthorities { current, max });
@@ -166,8 +168,9 @@ impl StackSid {
     #[inline]
     pub const fn try_truncate_sub_authorities(
         &mut self,
-        new_len: usize,
+        new_len: NonZeroUsize,
     ) -> Result<(), TruncateSubAuthoritiesError> {
+        let new_len = new_len.get();
         if new_len == 0 {
             return Err(TruncateSubAuthoritiesError::EmptySid);
         }

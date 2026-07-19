@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use core::{fmt, slice};
 use thiserror::Error;
 
-const MAX_SUB_AUTHORITIES: usize = parsing::MAX_SUBAUTHORITY_COUNT as usize;
+pub(crate) const MAX_SUB_AUTHORITIES: usize = parsing::MAX_SUBAUTHORITY_COUNT as usize;
 
 /// Error returned when a sub-authority cannot be appended to a SID.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq, Hash)]
@@ -144,6 +144,8 @@ mod tests {
     use crate::{SidIdentifierAuthority, StackSid};
     #[cfg(feature = "alloc")]
     use core::alloc::Layout;
+    use core::num::NonZeroUsize;
+    #[cfg(feature = "alloc")]
     use proptest::prelude::*;
 
     #[cfg(feature = "alloc")]
@@ -208,7 +210,7 @@ mod tests {
         assert_eq!(sid.capacity(), 4);
         assert_logical_heap_layout(&sid);
 
-        sid.try_truncate_sub_authorities(1)
+        sid.try_truncate_sub_authorities(NonZeroUsize::new(1).unwrap())
             .expect("one sub-authority remains");
         assert_eq!(sid.sub_authorities(), [1]);
         assert_eq!(sid.capacity(), 4);
@@ -258,7 +260,7 @@ mod tests {
             .expect("spare capacity is reused");
         assert_eq!(sid.sub_authorities().len(), 10);
 
-        sid.try_truncate_sub_authorities(2)
+        sid.try_truncate_sub_authorities(NonZeroUsize::new(2).unwrap())
             .expect("the SID remains non-empty");
         sid.shrink_to_fit();
         assert_eq!(sid.capacity(), 2);
@@ -288,7 +290,7 @@ mod tests {
         sid.try_reserve(14).expect("the Windows maximum fits");
         sid.try_extend_sub_authorities([8, 9, 10])
             .expect("reserved capacity is writable");
-        sid.try_truncate_sub_authorities(2)
+        sid.try_truncate_sub_authorities(NonZeroUsize::new(2).unwrap())
             .expect("the SID remains non-empty");
 
         let boxed: Box<crate::Sid> = sid.into();
@@ -379,10 +381,6 @@ mod tests {
                 requested: 2,
                 available: 1,
             })
-        );
-        assert_eq!(
-            sid.try_truncate_sub_authorities(0),
-            Err(TruncateSubAuthoritiesError::EmptySid)
         );
         assert_eq!(sid, before);
     }

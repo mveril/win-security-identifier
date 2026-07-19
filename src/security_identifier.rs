@@ -26,6 +26,7 @@ use crate::StackSid;
 use crate::internal::SidLenValid;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::from_raw_parts_mut;
+use crate::sid::SidHead;
 use crate::utils;
 use crate::utils::validate_sid_bytes_unaligned;
 use crate::{
@@ -35,13 +36,14 @@ use crate::{
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use ::alloc::{alloc, borrow::ToOwned, boxed::Box};
 use core::fmt::{self, Debug, Display};
-use core::mem::{ManuallyDrop, offset_of, size_of};
+use core::mem::{ManuallyDrop, offset_of};
 use core::ops::Deref;
-use core::ptr::NonNull;
 #[cfg(has_ptr_metadata)]
 use core::ptr::from_raw_parts_mut;
+use core::ptr::{NonNull, addr_of, addr_of_mut};
 mod maybe_uninit;
 use core::borrow::{Borrow, BorrowMut};
+use core::num::NonZeroUsize;
 use core::ops::DerefMut;
 use core::str::FromStr;
 use maybe_uninit::MaybeUninitSecurityIdentifier;
@@ -91,14 +93,10 @@ impl SecurityIdentifier {
         // SAFETY: reserve guarantees enough storage, and the destination is the
         // uninitialized tail immediately following the logical SID.
         unsafe {
-            self.inner
-                .as_ptr()
-                .add(crate::sid::SID_HEAD_SIZE + old_count * size_of::<u32>())
-                .cast::<u32>()
+            let sid_ptr = from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), new_count);
+            addr_of_mut!((*sid_ptr).sub_authorities[old_count])
                 .copy_from_nonoverlapping(appended.as_ptr(), appended.len());
-            self.inner
-                .as_ptr()
-                .add(offset_of!(Sid, sub_authority_count))
+            addr_of_mut!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
                 .write(new_count as u8);
         }
     }
@@ -107,9 +105,7 @@ impl SecurityIdentifier {
         debug_assert!((1..=self.capacity()).contains(&new_count));
         // SAFETY: the header is initialized and `new_count` fits the allocation.
         unsafe {
-            self.inner
-                .as_ptr()
-                .add(offset_of!(Sid, sub_authority_count))
+            addr_of_mut!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
                 .write(new_count as u8);
         }
     }
@@ -285,8 +281,9 @@ impl SecurityIdentifier {
     #[inline]
     pub fn try_truncate_sub_authorities(
         &mut self,
-        new_len: usize,
+        new_len: NonZeroUsize,
     ) -> Result<(), TruncateSubAuthoritiesError> {
+        let new_len = new_len.get();
         if new_len == 0 {
             return Err(TruncateSubAuthoritiesError::EmptySid);
         }
@@ -463,10 +460,7 @@ impl SecurityIdentifier {
         // SAFETY: `inner` points to an initialized SID header for the lifetime
         // of self. The logical count is maintained in 1..=capacity.
         unsafe {
-            let count = self
-                .inner
-                .as_ptr()
-                .add(offset_of!(Sid, sub_authority_count))
+            let count = addr_of!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
                 .read() as usize;
             debug_assert!((1..=self.capacity()).contains(&count));
             &*from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), count)
@@ -505,10 +499,7 @@ impl SecurityIdentifier {
         // SAFETY: exclusive access to self guarantees exclusive access to the
         // initialized logical SID prefix.
         unsafe {
-            let count = self
-                .inner
-                .as_ptr()
-                .add(offset_of!(Sid, sub_authority_count))
+            let count = addr_of!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
                 .read() as usize;
             debug_assert!((1..=self.capacity()).contains(&count));
             &mut *from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), count)
