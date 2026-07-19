@@ -94,7 +94,9 @@ impl SecurityIdentifier {
         // uninitialized tail immediately following the logical SID.
         unsafe {
             let sid_ptr = from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), new_count);
-            addr_of_mut!((*sid_ptr).sub_authorities[old_count])
+            addr_of_mut!((*sid_ptr).sub_authorities)
+                .cast::<u32>()
+                .add(old_count)
                 .copy_from_nonoverlapping(appended.as_ptr(), appended.len());
             addr_of_mut!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
                 .write(new_count as u8);

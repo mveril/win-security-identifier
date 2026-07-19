@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use core::{fmt, slice};
 use thiserror::Error;
 
-pub(crate) const MAX_SUB_AUTHORITIES: usize = parsing::MAX_SUBAUTHORITY_COUNT as usize;
+pub const MAX_SUB_AUTHORITIES: usize = parsing::MAX_SUBAUTHORITY_COUNT as usize;
 
 /// Error returned when a sub-authority cannot be appended to a SID.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq, Hash)]
@@ -144,8 +144,8 @@ mod tests {
     use crate::{SidIdentifierAuthority, StackSid};
     #[cfg(feature = "alloc")]
     use core::alloc::Layout;
-    use core::num::NonZeroUsize;
     #[cfg(feature = "alloc")]
+    use core::num::NonZeroUsize;
     use proptest::prelude::*;
 
     #[cfg(feature = "alloc")]
