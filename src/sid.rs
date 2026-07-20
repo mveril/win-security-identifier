@@ -61,7 +61,7 @@ use core::{
 #[repr(C)]
 pub struct Sid {
     /// The SID revision value, (currently only 1 is supported).
-    pub revision: u8,
+    revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
@@ -85,6 +85,49 @@ pub const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 impl Sid {
     /// The only valid revision value for now (No other sid format are defined by microsoft)
     pub const REVISION: u8 = 1;
+
+    /// Returns the SID revision.
+    #[must_use]
+    #[inline]
+    pub const fn revision(&self) -> u8 {
+        debug_assert!(
+            self.revision == Self::REVISION,
+            "SID revision invariant violated"
+        );
+        self.revision
+    }
+
+    /// Initializes an allocated SID from validated parts.
+    ///
+    /// # Safety
+    /// `sid_ptr` must point to writable storage sized for `sub_authorities`, and
+    /// the sub-authority count must be valid for a Windows SID.
+    #[cfg(feature = "alloc")]
+    pub(crate) unsafe fn initialize(
+        sid_ptr: *mut Self,
+        sub_authority_count: u8,
+        identifier_authority: SidIdentifierAuthority,
+        sub_authorities: &[u32],
+    ) {
+        debug_assert!(
+            sub_authority_count as usize == sub_authorities.len()
+                && sub_authorities.len() >= MIN_SUBAUTHORITY_COUNT as usize
+                && sub_authorities.len() <= MAX_SUBAUTHORITY_COUNT as usize,
+            "SID sub-authority count invariant violated"
+        );
+        #[expect(
+            clippy::multiple_unsafe_ops_per_block,
+            reason = "all writes initialize the same SID allocation"
+        )]
+        // SAFETY: The caller guarantees that the destination allocation is
+        // writable and sized for the supplied sub-authorities.
+        unsafe {
+            (*sid_ptr).revision = Self::REVISION;
+            (*sid_ptr).sub_authority_count = sub_authority_count;
+            (*sid_ptr).identifier_authority = identifier_authority;
+            (*sid_ptr).sub_authorities.copy_from_slice(sub_authorities);
+        }
+    }
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
     ///
     /// The slice covers the header and the exact number of sub-authorities currently set
@@ -223,7 +266,7 @@ impl Sid {
     /// # let bytes = const_sid.as_bytes();
     /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts and :
     /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");
-    /// assert_eq!(sid.revision, Sid::REVISION);
+    /// assert_eq!(sid.revision(), Sid::REVISION);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [20u32]);
     #[inline]

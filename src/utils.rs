@@ -3,7 +3,7 @@ use core::{borrow::Borrow, fmt};
 
 use crate::{
     InvalidSidBinaryFormat, Sid, SidSizeInfo,
-    sid::{MAX_SUBAUTHORITY_COUNT, MIN_SUBAUTHORITY_COUNT},
+    sid::{MAX_SUBAUTHORITY_COUNT, MIN_SUBAUTHORITY_COUNT, SidHead},
 };
 
 pub const fn sub_authority_size_guard(size: usize) -> bool {
@@ -12,8 +12,8 @@ pub const fn sub_authority_size_guard(size: usize) -> bool {
 
 /// Validates a raw SID blob like `IsValidSid` would, without assuming alignment.
 pub const fn validate_sid_bytes_unaligned(buf: &[u8]) -> Result<(), InvalidSidBinaryFormat> {
-    const REVISION_OFFSET: usize = offset_of!(Sid, revision);
-    const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
+    const REVISION_OFFSET: usize = offset_of!(SidHead, revision);
+    const COUNT_OFFSET: usize = offset_of!(SidHead, sub_authority_count);
     const MIN_SIZE: usize = SidSizeInfo::MIN.layout().size();
     if buf.len() < MIN_SIZE {
         return Err(InvalidSidBinaryFormat::TooShort {
@@ -76,7 +76,7 @@ pub fn debug_print<T: Borrow<Sid> + ?Sized>(
     let sid = sid.borrow();
     if f.alternate() {
         f.debug_struct(struct_name)
-            .field("revision", &sid.revision)
+            .field("revision", &sid.revision())
             .field("sub_authority_count", &sid.sub_authority_count)
             .field("identifier_authority", &sid.identifier_authority)
             .field("sub_authority", &sid.sub_authorities())
@@ -96,8 +96,8 @@ mod test {
     const MIN_SIZE: usize = SidSizeInfo::MIN.layout().size();
     const MAX_SIZE: usize = SidSizeInfo::MAX.layout().size();
     const TEST_BUF_SIZE: usize = MAX_SIZE + 7;
-    const REVISION_OFFSET: usize = offset_of!(Sid, revision);
-    const COUNT_OFFSET: usize = offset_of!(Sid, sub_authority_count);
+    const REVISION_OFFSET: usize = offset_of!(SidHead, revision);
+    const COUNT_OFFSET: usize = offset_of!(SidHead, sub_authority_count);
 
     /// Builds a raw SID buffer for the given sub-authority count.
     fn make_sid_bytes(count: u8) -> ArrayVec<u8, TEST_BUF_SIZE> {
