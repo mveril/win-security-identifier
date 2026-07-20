@@ -50,7 +50,7 @@ where
 }
 
 fn assert_valid_sid(sid: &Sid, label: &str) {
-    assert_eq!(sid.revision, Sid::REVISION, "{label} revision is invalid");
+    assert_eq!(sid.revision(), Sid::REVISION, "{label} revision is invalid");
     assert!(
         !sid.sub_authorities().is_empty(),
         "{label} should contain at least one sub-authority"

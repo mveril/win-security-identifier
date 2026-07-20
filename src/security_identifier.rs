@@ -74,7 +74,7 @@ impl SecurityIdentifier {
     ///     SidIdentifierAuthority::NT_AUTHORITY,
     ///     [32u32, 544u32]
     /// ).unwrap();
-    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.revision(), 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
@@ -108,7 +108,7 @@ impl SecurityIdentifier {
     ///         [32u32, 544u32],
     ///     )
     /// };
-    /// assert_eq!(sid.revision, 1);
+    /// assert_eq!(sid.revision(), 1);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [32u32, 544u32]);
     /// ```
@@ -130,16 +130,15 @@ impl SecurityIdentifier {
         // Safety: The uninit SID will be correctly filled after.
         let mut uninit = MaybeUninitSecurityIdentifier::alloc(&size_info);
         let sid_ptr = uninit.as_mut_ptr();
-        #[expect(
-            clippy::multiple_unsafe_ops_per_block,
-            reason = "Same kind of operations"
-        )]
-        // Safety: We know the ptr is not null so we can write
+        // SAFETY: The allocation was sized for the validated sub-authority
+        // count, and `sid_ptr` points to its writable SID storage.
         unsafe {
-            (*sid_ptr).revision = Sid::REVISION;
-            (*sid_ptr).sub_authority_count = sub_authority_count;
-            (*sid_ptr).identifier_authority = identifier_authority;
-            (*sid_ptr).sub_authorities.copy_from_slice(sub_authorities);
+            Sid::initialize(
+                sid_ptr,
+                sub_authority_count,
+                identifier_authority,
+                sub_authorities,
+            );
         }
         // Safety: all is written so we can assume init
         unsafe { uninit.assume_init() }
