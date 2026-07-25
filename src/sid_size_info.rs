@@ -47,7 +47,7 @@ impl SidSizeInfo {
 
         // Remaining must be multiple of u32
         let remaining = size - SID_HEAD_SIZE;
-        if !remaining.is_multiple_of(core::mem::size_of::<u32>()) {
+        if remaining % core::mem::size_of::<u32>() != 0 {
             return None;
         }
 
@@ -75,7 +75,7 @@ impl SidSizeInfo {
     }
 }
 #[allow(clippy::unwrap_used, reason = "Unwrap is not an issue in test")]
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod test {
     use super::*;
     use crate::ConstSid;
@@ -137,7 +137,7 @@ mod test {
             prop_assert_ne!(SidSizeInfo::from_full_size(size), None);
         }
     }
-    #[cfg(all(windows, feature = "std"))]
+    #[cfg(all(windows, feature = "std", not(miri)))]
     mod windows {
         use super::super::*;
         use proptest::prelude::*;

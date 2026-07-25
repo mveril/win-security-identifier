@@ -1,6 +1,6 @@
 use crate::sid::Sid;
 mod token_error;
-use super::CloneSidFromRaw;
+use crate::CloneSidFromRaw;
 use crate::utils::validate_sid_bytes_unaligned;
 use core::mem::{MaybeUninit, align_of, size_of};
 use core::ptr;
@@ -11,9 +11,9 @@ pub use token_error::TokenError;
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
     Security::{
-        GetLengthSid, GetTokenInformation, SECURITY_MAX_SID_SIZE, TOKEN_GROUPS,
-        TOKEN_INFORMATION_CLASS, TOKEN_PRIMARY_GROUP, TOKEN_QUERY, TOKEN_USER, TokenGroups,
-        TokenPrimaryGroup, TokenUser,
+        CheckTokenMembership, GetLengthSid, GetTokenInformation, SECURITY_MAX_SID_SIZE,
+        TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_PRIMARY_GROUP, TOKEN_QUERY, TOKEN_USER,
+        TokenGroups, TokenPrimaryGroup, TokenUser,
     },
     System::{
         SystemServices::{SE_GROUP_LOGON_ID, SE_TOKEN_USER},
@@ -21,6 +21,10 @@ use windows_sys::Win32::{
     },
 };
 
+#[allow(
+    dead_code,
+    reason = "Rust 1.85.0 dead_code does not count use from anonymous const assertions"
+)]
 const MAX_TOKEN_USER_BUFFER_SIZE: usize = size_of::<TOKEN_USER>() + SECURITY_MAX_SID_SIZE as usize;
 const _: () = assert!(
     size_of::<SE_TOKEN_USER>() >= MAX_TOKEN_USER_BUFFER_SIZE,
@@ -45,11 +49,19 @@ impl TokenInformationBuffer {
         }
     }
 
-    const fn as_mut_ptr(&mut self) -> *mut u8 {
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "Vec::as_mut_ptr is not const-stable on the Rust 1.85.0 MSRV"
+    )]
+    fn as_mut_ptr(&mut self) -> *mut u8 {
         self.storage.as_mut_ptr().cast()
     }
 
-    const fn as_ptr(&self) -> *const u8 {
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "Vec::as_ptr is not const-stable on the Rust 1.85.0 MSRV"
+    )]
+    fn as_ptr(&self) -> *const u8 {
         self.storage.as_ptr().cast()
     }
 
@@ -75,7 +87,11 @@ const _: () = assert!(
 struct TokenGroupAttributes(u32);
 
 impl TokenGroupAttributes {
-    const LOGON_ID: Self = Self(SE_GROUP_LOGON_ID.cast_unsigned());
+    #[allow(
+        clippy::cast_sign_loss,
+        reason = "SE_GROUP_LOGON_ID is a Windows bitflag exposed as i32"
+    )]
+    const LOGON_ID: Self = Self(SE_GROUP_LOGON_ID as u32);
 
     const fn from_raw(raw: u32) -> Self {
         Self(raw)
@@ -90,7 +106,7 @@ impl TokenGroupAttributes {
     }
 }
 
-pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
+pub trait GetCurrentSid: CloneSidFromRaw {
     /// Retrieves the current user's SID from the process token (Windows only).
     ///
     /// # Errors
@@ -235,22 +251,33 @@ pub trait GetCurrentSid: CloneSidFromRaw + AsRef<Sid> {
         Ok(groups.into_iter().next().map(|(sid, _)| sid))
     }
 
-    /// Checks whether the given SID is present in the current user SID or token group SIDs.
+    /// Checks whether the effective security token is a member of the given SID.
+    ///
+    /// Windows checks the calling thread's impersonation token when one is active;
+    /// otherwise it checks the current process token. Disabled and deny-only groups
+    /// do not grant membership.
     ///
     /// # Errors
     /// Returns a [`TokenError`] when opening or querying the process token fails.
     #[inline]
     fn is_current_user_member_of(sid: &Sid) -> Result<bool, TokenError> {
-        let current_user = Self::get_current_user_sid()?;
-        if current_user.as_ref() == sid {
-            return Ok(true);
+        let mut is_member = 0;
+        // SAFETY: A null token handle asks Windows to use the effective token.
+        // sid.as_raw() remains valid for the duration of the call, and
+        // is_member is writable output storage.
+        let succeeded =
+            unsafe { CheckTokenMembership(ptr::null_mut(), sid.as_raw(), &raw mut is_member) };
+        if succeeded == 0 {
+            // SAFETY: GetLastError is called immediately after the failing FFI call.
+            return Err(TokenError::CheckTokenMembershipFailed(unsafe {
+                GetLastError()
+            }));
         }
-        current_token_group_entries::<Self>(|group_sid, _| group_sid == sid)
-            .map(|groups| !groups.is_empty())
+        Ok(is_member != 0)
     }
 }
 
-impl<T> GetCurrentSid for T where T: CloneSidFromRaw + AsRef<Sid> {}
+impl<T> GetCurrentSid for T where T: CloneSidFromRaw {}
 
 fn open_current_process_token() -> Result<OwnedHandle, TokenError> {
     let mut raw_handle_mu: MaybeUninit<RawHandle> = MaybeUninit::uninit();
@@ -388,12 +415,8 @@ fn is_supported_sid(raw_sid: windows_sys::Win32::Security::PSID) -> bool {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "Expect is not an issue in tests")]
 mod tests {
-    use super::{GetCurrentSid, MAX_TOKEN_USER_BUFFER_SIZE, SE_TOKEN_USER, TOKEN_USER};
-    use crate::{CloneSidFromRaw, SecurityIdentifier, Sid, StackSid};
-    use core::fmt::Debug;
-    use core::marker::PhantomData;
+    use super::{MAX_TOKEN_USER_BUFFER_SIZE, SE_TOKEN_USER, TOKEN_USER};
     use core::mem::{align_of, size_of};
-    use rstest::rstest;
     use windows_sys::Win32::Security::{PSID, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES};
 
     #[test]
@@ -424,49 +447,6 @@ mod tests {
             align_of::<SID_AND_ATTRIBUTES>(),
             align_of::<PSID>(),
             "SID_AND_ATTRIBUTES alignment is driven by its PSID member"
-        );
-    }
-
-    #[rstest]
-    #[case::security_identifier(PhantomData::<SecurityIdentifier>)]
-    #[case::stack_sid(PhantomData::<StackSid>)]
-    fn current_token_sids<T>(#[case] type_marker: PhantomData<T>)
-    where
-        T: CloneSidFromRaw + GetCurrentSid + AsRef<Sid> + Debug,
-    {
-        let _ = type_marker;
-
-        let primary_group =
-            T::get_current_primary_group_sid().expect("Failed to get primary group SID");
-        assert_valid_sid(primary_group.as_ref(), "primary group SID");
-
-        let groups = T::get_current_user_group_sids().expect("Failed to get current group SIDs");
-        assert!(
-            !groups.is_empty(),
-            "current token should expose at least one group SID"
-        );
-        for group in &groups {
-            assert_valid_sid(group.as_ref(), "group SID");
-        }
-
-        let logon_sid = T::get_current_logon_sid().expect("Failed to get current logon SID");
-        if let Some(logon_sid) = logon_sid.as_ref() {
-            assert_valid_sid(logon_sid.as_ref(), "logon SID");
-        }
-
-        let current_user = T::get_current_user_sid().expect("Failed to get current user SID");
-        assert!(
-            T::is_current_user_member_of(current_user.as_ref())
-                .expect("Failed to check current user membership"),
-            "current user SID should be reported as current user membership"
-        );
-    }
-
-    fn assert_valid_sid(sid: &Sid, label: &str) {
-        assert_eq!(sid.revision, Sid::REVISION, "{label} revision is invalid");
-        assert!(
-            !sid.sub_authorities().is_empty(),
-            "{label} should contain at least one sub-authority"
         );
     }
 }

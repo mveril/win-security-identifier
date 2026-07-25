@@ -61,7 +61,7 @@ use core::{
 #[repr(C)]
 pub struct Sid {
     /// The SID revision value, (currently only 1 is supported).
-    pub revision: u8,
+    revision: u8,
     pub(crate) sub_authority_count: u8,
     /// The SID identifier authority value.
     pub identifier_authority: SidIdentifierAuthority,
@@ -85,6 +85,49 @@ pub const SID_HEAD_SIZE: usize = core::mem::size_of::<SidHead>();
 impl Sid {
     /// The only valid revision value for now (No other sid format are defined by microsoft)
     pub const REVISION: u8 = 1;
+
+    /// Returns the SID revision.
+    #[must_use]
+    #[inline]
+    pub const fn revision(&self) -> u8 {
+        debug_assert!(
+            self.revision == Self::REVISION,
+            "SID revision invariant violated"
+        );
+        self.revision
+    }
+
+    /// Initializes an allocated SID from validated parts.
+    ///
+    /// # Safety
+    /// `sid_ptr` must point to writable storage sized for `sub_authorities`, and
+    /// the sub-authority count must be valid for a Windows SID.
+    #[cfg(feature = "alloc")]
+    pub(crate) unsafe fn initialize(
+        sid_ptr: *mut Self,
+        sub_authority_count: u8,
+        identifier_authority: SidIdentifierAuthority,
+        sub_authorities: &[u32],
+    ) {
+        debug_assert!(
+            sub_authority_count as usize == sub_authorities.len()
+                && sub_authorities.len() >= MIN_SUBAUTHORITY_COUNT as usize
+                && sub_authorities.len() <= MAX_SUBAUTHORITY_COUNT as usize,
+            "SID sub-authority count invariant violated"
+        );
+        #[expect(
+            clippy::multiple_unsafe_ops_per_block,
+            reason = "all writes initialize the same SID allocation"
+        )]
+        // SAFETY: The caller guarantees that the destination allocation is
+        // writable and sized for the supplied sub-authorities.
+        unsafe {
+            (*sid_ptr).revision = Self::REVISION;
+            (*sid_ptr).sub_authority_count = sub_authority_count;
+            (*sid_ptr).identifier_authority = identifier_authority;
+            (*sid_ptr).sub_authorities.copy_from_slice(sub_authorities);
+        }
+    }
     /// Returns a `&[u8]` view over the **currently valid** minimal binary representation of this SID.
     ///
     /// The slice covers the header and the exact number of sub-authorities currently set
@@ -140,13 +183,9 @@ impl Sid {
     ///   `sub_authority_count` and the tail length).
     #[allow(dead_code)]
     pub(crate) const unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
+        let len = self.min_layout().size();
         // Safety: Precondition definied in the method doc.
-        unsafe {
-            slice::from_raw_parts_mut(
-                core::ptr::from_ref(self).cast_mut().cast::<u8>(),
-                self.min_layout().size(),
-            )
-        }
+        unsafe { slice::from_raw_parts_mut(core::ptr::from_mut(self).cast::<u8>(), len) }
     }
 
     /// Returns the slice of sub-authorities (`[u32]`) with length `sub_authority_count`.
@@ -173,6 +212,27 @@ impl Sid {
                 self.sub_authority_count as usize,
             )
         }
+    }
+
+    /// Returns mutable access to the existing sub-authorities.
+    ///
+    /// This cannot change the number of values and therefore preserves the SID layout.
+    #[inline]
+    pub const fn sub_authorities_mut(&mut self) -> &mut [u32] {
+        // SAFETY: the SID invariant guarantees that the DST tail contains
+        // `sub_authority_count` initialized values.
+        unsafe {
+            slice::from_raw_parts_mut(
+                self.sub_authorities.as_mut_ptr(),
+                self.sub_authority_count as usize,
+            )
+        }
+    }
+
+    /// Changes the SID identifier authority without changing its layout.
+    #[inline]
+    pub const fn set_identifier_authority(&mut self, authority: SidIdentifierAuthority) {
+        self.identifier_authority = authority;
     }
 
     /// Computes the minimal `Layout` (size + align) needed for **this** instance
@@ -227,7 +287,7 @@ impl Sid {
     /// # let bytes = const_sid.as_bytes();
     /// // Build a SID S-1-5-32-544 (Builtin\Administrators) from parts and :
     /// let sid = unsafe{ Sid::from_bytes(bytes) }.expect("valid SID parts");
-    /// assert_eq!(sid.revision, Sid::REVISION);
+    /// assert_eq!(sid.revision(), Sid::REVISION);
     /// assert_eq!(sid.identifier_authority, SidIdentifierAuthority::NT_AUTHORITY);
     /// assert_eq!(sid.sub_authorities(), [20u32]);
     #[inline]
@@ -328,12 +388,14 @@ impl Hash for Sid {
 #[cfg(test)]
 mod tests {
     use crate::well_known;
-    #[cfg(feature = "alloc")]
+    #[cfg(feature = "std")]
     use crate::{SecurityIdentifier, arb_security_identifier};
 
-    use super::*;
     use arrayvec::ArrayString;
     use core::fmt::Write;
+    #[cfg(feature = "std")]
+    use core::hash::Hash;
+    #[cfg(feature = "std")]
     use proptest::prelude::*;
 
     #[cfg(feature = "std")]
@@ -377,7 +439,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(windows, feature = "std"))]
+    #[cfg(all(windows, feature = "std", not(miri)))]
     mod windows {
         use super::super::*;
         #[cfg(feature = "alloc")]

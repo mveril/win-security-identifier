@@ -17,6 +17,137 @@ defaults:
     shell: bash
 
 jobs:
+  semver_checks:
+    name: SemVer checks (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TARGET: ${{ matrix.target }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare latest stable Rust toolchain
+        run: |
+          rustup set profile minimal
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add --toolchain stable "${TARGET}"
+
+      - name: Cache cargo-semver-checks
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-semver-checks-registry-v1
+
+      - name: Install cargo-semver-checks
+        run: |
+          cargo install cargo-semver-checks --locked
+
+      - name: Show SemVer tool versions
+        run: |
+          rustc -Vv
+          cargo -V
+          cargo semver-checks --version
+
+      - name: Check SemVer compatibility
+        run: |
+          cargo semver-checks check-release --workspace --manifest-path Cargo.toml --target "${TARGET}"
+
+  semver_compatibility:
+    name: SemVer compatibility
+    runs-on: ubuntu-latest
+    permissions: {}
+    if: ${{ always() }}
+    needs: semver_checks
+    steps:
+      - name: Require every SemVer target to pass
+        env:
+          SEMVER_RESULT: ${{ needs.semver_checks.result }}
+        run: test "${SEMVER_RESULT}" = "success"
+
+  msrv-windows:
+    name: MSRV validation (Windows)
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare Rust toolchain (stable)
+        run: |
+          rustup set profile minimal
+          rustup update stable
+          rustup default stable
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.toml', '.cargo/config.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-msrv-
+
+      - name: Install cargo-msrv
+        run: cargo install cargo-msrv --locked
+
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: '0.108.0'
+
+      - name: Verify workspace rust-version declarations
+        run: |
+          cargo metadata --format-version 1 --no-deps | nu --stdin -c '
+            let metadata = ($in | from json)
+            let members = $metadata.workspace_members
+            let errors = (
+              $metadata.packages
+              | where {|package|
+                  (($package.id in $members)
+                    and (($package.publish? | default null) != false)
+                    and (($package.rust_version? | default "") == ""))
+                }
+              | each {|package| $"($package.name) does not declare rust-version in ($package.manifest_path)" }
+            )
+
+            if (($errors | length) > 0) {
+              $errors | each {|error| print $"ERROR: ($error)" }
+              exit 1
+            }
+
+            print "All publishable workspace crates declare rust-version."
+          '
+
+      - name: Verify MSRV check (all features)
+        run: cargo msrv verify -- cargo check --workspace --all-features
+
+      - name: Verify MSRV tests (all features)
+        run: cargo msrv verify -- cargo test --workspace --all-features --all-targets
+
+      - name: Verify MSRV tests (no default features)
+        run: cargo msrv verify -- cargo test --workspace --no-default-features
+
   build-test-std:
     name: Build & test (${{ matrix.os }}, ${{ matrix.toolchain }})
     runs-on: ${{ matrix.os }}
@@ -110,6 +241,42 @@ jobs:
       - name: Build docs${{ matrix.docsrs && ' with docs.rs config' || '' }} windows only
         if: ${{ runner.os == 'Windows' }}
         run: cargo doc --workspace --all-features --no-deps
+
+  miri:
+    name: Miri
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      MIRIFLAGS: -Zmiri-strict-provenance -Zmiri-disable-isolation
+      PROPTEST_CASES: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (nightly)
+        run: |
+          rustup set profile minimal
+          rustup update nightly
+          rustup default nightly
+          rustup component add miri
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-miri-${{ github.sha }}
+
+      - name: Show toolchain versions
+        run: rustc -Vv && cargo -V && cargo miri --version
+
+      - name: Run Miri tests
+        run: cargo miri test --workspace --all-features --lib
   
   no-std:
     name: no_std check and build

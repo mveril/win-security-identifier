@@ -40,12 +40,15 @@ impl Sid {
     /// Returns a high-level classification for this SID.
     #[must_use]
     #[inline]
-    pub fn classification(&self) -> SidClassification {
+    pub const fn classification(&self) -> SidClassification {
         classify(self.identifier_authority, self.sub_authorities())
     }
 }
 
-pub fn classify(authority: SidIdentifierAuthority, sub_authorities: &[u32]) -> SidClassification {
+pub const fn classify(
+    authority: SidIdentifierAuthority,
+    sub_authorities: &[u32],
+) -> SidClassification {
     match authority {
         SidIdentifierAuthority::NULL_AUTHORITY => classify_null(sub_authorities),
         SidIdentifierAuthority::SECURITY_WORLD_AUTHORITY => classify_world(sub_authorities),
@@ -65,31 +68,28 @@ pub fn classify(authority: SidIdentifierAuthority, sub_authorities: &[u32]) -> S
     }
 }
 
-fn classify_null(sub_authorities: &[u32]) -> SidClassification {
-    if sub_authorities == [0] {
-        SidClassification::Null
-    } else {
-        SidClassification::Unknown
+const fn classify_null(sub_authorities: &[u32]) -> SidClassification {
+    match sub_authorities {
+        [0] => SidClassification::Null,
+        _ => SidClassification::Unknown,
     }
 }
 
-fn classify_world(sub_authorities: &[u32]) -> SidClassification {
-    if sub_authorities == [0] {
-        SidClassification::World
-    } else {
-        SidClassification::Unknown
+const fn classify_world(sub_authorities: &[u32]) -> SidClassification {
+    match sub_authorities {
+        [0] => SidClassification::World,
+        _ => SidClassification::Unknown,
     }
 }
 
-fn classify_local(sub_authorities: &[u32]) -> SidClassification {
-    if sub_authorities == [0] {
-        SidClassification::Local
-    } else {
-        SidClassification::Unknown
+const fn classify_local(sub_authorities: &[u32]) -> SidClassification {
+    match sub_authorities {
+        [0] => SidClassification::Local,
+        _ => SidClassification::Unknown,
     }
 }
 
-fn classify_creator(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_creator(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [0] => SidClassification::CreatorOwner,
         [1] => SidClassification::CreatorGroup,
@@ -97,7 +97,7 @@ fn classify_creator(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
-fn classify_nt_authority(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_nt_authority(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [21, _, ..] => SidClassification::AccountDomain,
         [32, _, ..] => SidClassification::BuiltinAlias,
@@ -106,7 +106,7 @@ fn classify_nt_authority(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
-fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [2, _, ..] => SidClassification::AppContainer,
         [3, _, ..] => SidClassification::Capability,
@@ -114,7 +114,7 @@ fn classify_package_authority(sub_authorities: &[u32]) -> SidClassification {
     }
 }
 
-fn classify_authentication_authority(sub_authorities: &[u32]) -> SidClassification {
+const fn classify_authentication_authority(sub_authorities: &[u32]) -> SidClassification {
     match sub_authorities {
         [1 | 2, ..] => SidClassification::AuthenticationAuthority,
         _ => SidClassification::Unknown,
@@ -181,6 +181,14 @@ mod tests {
         classification: SidClassification,
     ) {
         assert_ne!(classify(authority, sub_authorities), classification);
+    }
+
+    #[test]
+    fn classifies_in_const_context() {
+        const CLASSIFICATION: SidClassification =
+            well_known::BUILTIN_ADMINISTRATORS.classification();
+
+        assert_eq!(CLASSIFICATION, SidClassification::BuiltinAlias);
     }
 
     #[test]

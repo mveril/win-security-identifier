@@ -4,8 +4,6 @@ use crate::SidClassification;
 #[cfg(not(has_ptr_metadata))]
 use crate::polyfills_ptr::{from_raw_parts, from_raw_parts_mut};
 use crate::{Sid, SidIdentifierAuthority, StackSid, internal::SidLenValid, utils};
-#[cfg(all(feature = "alloc", not(feature = "std")))]
-use alloc::borrow::ToOwned;
 #[cfg(has_ptr_metadata)]
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 use core::{
@@ -54,7 +52,7 @@ where
     [u32; N]: SidLenValid,
 {
     /// SID revision (commonly `1`).
-    pub revision: u8,
+    revision: u8,
     // Always equals N; kept private to preserve invariant.
     sub_authority_count: u8,
     /// 6-byte identifier authority.
@@ -117,6 +115,17 @@ impl<const N: usize> ConstSid<N>
 where
     [u32; N]: SidLenValid,
 {
+    /// Returns the SID revision.
+    #[must_use]
+    #[inline]
+    pub const fn revision(&self) -> u8 {
+        debug_assert!(
+            self.revision == Sid::REVISION,
+            "SID revision invariant violated"
+        );
+        self.revision
+    }
+
     /// Creates a new `ConstSid<N>` after validating the sub-authority count.
     ///
     /// Returns `None` if `N` is outside the valid Windows range (1..=15).
@@ -169,7 +178,7 @@ where
         to self.as_sid() {
             #[must_use]
             #[inline]
-            pub fn classification(&self) -> SidClassification;
+            pub const fn classification(&self) -> SidClassification;
         }
     }
 
@@ -310,7 +319,7 @@ where
     type Error = TryFromSliceError;
     #[inline]
     fn try_from(value: &Sid) -> Result<Self, Self::Error> {
-        let revision = value.revision;
+        let revision = value.revision();
         let identifier_authority = value.identifier_authority;
         let sub_authority: [u32; N] = value.sub_authorities().try_into()?;
         Ok(Self {
@@ -459,7 +468,7 @@ mod test {
     #[test]
     fn test_const_sid_macro() {
         let sid = ConstSid::new(SidIdentifierAuthority::NT_AUTHORITY, [32, 544]);
-        assert_eq!(sid.revision, Sid::REVISION);
+        assert_eq!(sid.revision(), Sid::REVISION);
         assert_eq!(
             sid.identifier_authority,
             SidIdentifierAuthority::NT_AUTHORITY

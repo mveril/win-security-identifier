@@ -1,0 +1,3 @@
+# serde_derive and thiserror-impl use syn 3, while other proc-macro dependencies
+# still use syn 2. Both versions are build-time-only transitive dependencies.
+allowed-duplicate-crates = ["syn"]

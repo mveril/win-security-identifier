@@ -117,6 +117,7 @@ mod account_sid;
 #[cfg(feature = "alloc")]
 mod security_identifier;
 mod sid;
+mod sid_mutation;
 
 pub use account_sid::{AccountSid, NotAccountSid};
 #[cfg(doc)]
@@ -132,6 +133,7 @@ pub use sid::sid_lookup::LookupAccountName;
 mod ext;
 mod invalid_sid_binary_format;
 mod invalid_sid_parts;
+mod owned_sid;
 
 #[cfg(not(has_ptr_metadata))]
 pub(crate) mod polyfills_ptr;
@@ -144,7 +146,7 @@ extern crate alloc;
 
 mod sid_classification;
 mod sid_identifier_authority;
-#[cfg(all(test, feature = "alloc"))]
+#[cfg(all(test, feature = "std"))]
 pub(crate) use security_identifier::test::arb_security_identifier;
 
 /// Identifier authority component of a SID (6-byte value).
@@ -154,6 +156,10 @@ pub use sid_identifier_authority::SidIdentifierAuthority;
 
 pub use sid::Sid;
 pub use sid_classification::SidClassification;
+pub use sid_mutation::{
+    ExtendSubAuthoritiesError, PopSubAuthoritiesError, PopSubAuthorityError, PoppedSubAuthorities,
+    PushSubAuthorityError, TruncateSubAuthoritiesError,
+};
 
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -169,6 +175,7 @@ pub(crate) mod internal;
 pub use const_sid::ConstSid;
 pub use invalid_sid_binary_format::InvalidSidBinaryFormat;
 pub use invalid_sid_parts::InvalidSidParts;
+pub use owned_sid::OwnedSid;
 
 pub use parsing::InvalidSidFormat;
 
