@@ -69,6 +69,17 @@ pub struct SecurityIdentifier {
     capacity: u8,
 }
 
+// SAFETY: `SecurityIdentifier` exclusively owns its global-allocator allocation.
+// Moving it transfers that ownership without changing the allocation, and all
+// access to the SID contents still requires Rust's shared or exclusive borrow
+// rules.
+unsafe impl Send for SecurityIdentifier {}
+
+// SAFETY: shared access only exposes `&Sid`; mutations require `&mut self`.
+// The allocation remains valid until `Drop`, which requires exclusive access to
+// the owning value.
+unsafe impl Sync for SecurityIdentifier {}
+
 impl Debug for SecurityIdentifier {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -980,5 +991,12 @@ pub mod test {
             format!("{:?}", SecurityIdentifier::from(sample_sid.as_sid())),
             format!("{:}(S-1-0-0)", stringify!(SecurityIdentifier)),
         );
+    }
+
+    #[test]
+    fn security_identifier_is_send_and_sync() {
+        fn assert_send_and_sync<T: Send + Sync>() {}
+
+        assert_send_and_sync::<SecurityIdentifier>();
     }
 }
