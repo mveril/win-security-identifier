@@ -6,10 +6,12 @@ on:
       - release/*
   pull_request:
     branches:
+      - main
       - release/*
 
 jobs:
   msrv-windows:
+    if: ${{ github.event_name == 'push' || startsWith(github.base_ref, 'release/') || (github.base_ref == 'main' && startsWith(github.head_ref, 'release/')) }}
     runs-on: windows-latest
     name: "MSRV validation (Windows)"
     env:
@@ -83,6 +85,7 @@ jobs:
         run: cargo msrv verify -- cargo test --workspace --no-default-features
 
   version-check:
+    if: ${{ github.event_name == 'push' || startsWith(github.base_ref, 'release/') || (github.base_ref == 'main' && startsWith(github.head_ref, 'release/')) }}
     runs-on: ubuntu-latest
     name: "Check crate versions"
     env:
