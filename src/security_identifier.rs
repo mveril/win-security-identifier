@@ -1,3 +1,9 @@
+//! Heap-backed SID storage and mutation.
+//!
+//! The allocation code below intentionally performs several related pointer
+//! operations together: the SID is a dynamically sized type whose metadata is
+//! the logical sub-authority count, while the allocation uses a separately
+//! tracked capacity bounded by the Windows maximum.
 use crate::ConstSid;
 use crate::InvalidSidBinaryFormat;
 pub use crate::InvalidSidFormat;
@@ -7,23 +13,32 @@ use crate::SidIdentifierAuthority;
 use crate::SidSizeInfo;
 use crate::StackSid;
 use crate::internal::SidLenValid;
+#[cfg(not(has_ptr_metadata))]
+use crate::polyfills_ptr::from_raw_parts_mut;
+use crate::sid::SidHead;
 use crate::utils;
 use crate::utils::validate_sid_bytes_unaligned;
+use crate::{
+    ExtendSubAuthoritiesError, PopSubAuthoritiesError, PopSubAuthorityError, PoppedSubAuthorities,
+    PushSubAuthorityError, TruncateSubAuthoritiesError,
+};
 #[cfg(all(feature = "alloc", not(feature = "std")))]
-use ::alloc::{borrow::ToOwned, boxed::Box};
-use core::alloc::Layout;
+use ::alloc::{alloc, borrow::ToOwned, boxed::Box};
 use core::fmt::{self, Debug, Display};
-use core::mem::offset_of;
+use core::mem::{ManuallyDrop, offset_of};
 use core::ops::Deref;
+#[cfg(has_ptr_metadata)]
+use core::ptr::from_raw_parts_mut;
+use core::ptr::{NonNull, addr_of, addr_of_mut};
 mod maybe_uninit;
 use core::borrow::{Borrow, BorrowMut};
+use core::num::NonZeroUsize;
 use core::ops::DerefMut;
 use core::str::FromStr;
-use delegate::delegate;
 use maybe_uninit::MaybeUninitSecurityIdentifier;
 use parsing::SidComponents;
 #[cfg(feature = "std")]
-use std::borrow::ToOwned;
+use std::{alloc, borrow::ToOwned};
 
 /// Owned, heap-allocated Windows **Security Identifier** (SID).
 ///
@@ -47,7 +62,11 @@ use std::borrow::ToOwned;
 /// println!("{}", sid); // e.g., "S-1-5-32-544"
 /// ```
 pub struct SecurityIdentifier {
-    inner: Box<Sid>,
+    // Points to a global-allocator allocation aligned for `SidHead`. Its layout
+    // corresponds to `capacity`; the initialized SID length is stored in
+    // `SidHead::sub_authority_count` and never exceeds that capacity.
+    inner: NonNull<u8>,
+    capacity: u8,
 }
 
 impl Debug for SecurityIdentifier {
@@ -58,6 +77,246 @@ impl Debug for SecurityIdentifier {
 }
 
 impl SecurityIdentifier {
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "the SID limit guarantees the new count fits in u8; the pointer operations initialize one DST tail"
+    )]
+    fn grow_by(&mut self, appended: &[u32]) {
+        let new_count = self.sub_authorities().len() + appended.len();
+        debug_assert!(
+            new_count <= crate::sid_mutation::max_sub_authorities(),
+            "the new SID length must remain within the Windows limit"
+        );
+        self.reserve_for(appended.len());
+        let old_count = self.sub_authorities().len();
+        // SAFETY: reserve guarantees enough storage, and the destination is the
+        // uninitialized tail immediately following the logical SID.
+        unsafe {
+            let sid_ptr: *mut Sid = from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), new_count);
+            addr_of_mut!((*sid_ptr).sub_authorities)
+                .cast::<u32>()
+                .add(old_count)
+                .copy_from_nonoverlapping(appended.as_ptr(), appended.len());
+            addr_of_mut!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
+                .write(new_count as u8);
+        }
+    }
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "the capacity invariant guarantees the new count fits in u8; the pointer operations update one SID header"
+    )]
+    fn shrink_to(&mut self, new_count: usize) {
+        debug_assert!(
+            (1..=self.capacity()).contains(&new_count),
+            "the new SID length must fit the allocation"
+        );
+        // SAFETY: the header is initialized and `new_count` fits the allocation.
+        unsafe {
+            addr_of_mut!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
+                .write(new_count as u8);
+        }
+    }
+
+    /// Returns the number of sub-authorities that fit without reallocating.
+    #[must_use]
+    #[inline]
+    pub const fn capacity(&self) -> usize {
+        self.capacity as usize
+    }
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "the Windows SID limit guarantees the capacity fits in u8; the allocator operations form one reallocation"
+    )]
+    fn reserve_for(&mut self, additional: usize) {
+        let required = self.sub_authorities().len().saturating_add(additional);
+        debug_assert!(
+            required <= crate::sid_mutation::max_sub_authorities(),
+            "the required SID capacity must remain within the Windows limit"
+        );
+        if required <= self.capacity() {
+            return;
+        }
+        let max = crate::sid_mutation::max_sub_authorities();
+        let new_capacity = self.capacity().saturating_mul(2).max(required).min(max);
+        // SAFETY: both layouts have the same alignment and `inner` was allocated
+        // by the global allocator with `old_layout`.
+        unsafe {
+            let old_layout = SidSizeInfo::from_count(self.capacity)
+                .unwrap_unchecked()
+                .layout();
+            let new_layout = SidSizeInfo::from_count(new_capacity as u8)
+                .unwrap_unchecked()
+                .layout();
+            let resized = alloc::realloc(self.inner.as_ptr(), old_layout, new_layout.size());
+            self.inner =
+                NonNull::new(resized).unwrap_or_else(|| alloc::handle_alloc_error(new_layout));
+        }
+        self.capacity = new_capacity as u8;
+    }
+
+    /// Reserves capacity for at least `additional` more sub-authorities.
+    ///
+    /// # Errors
+    /// Returns [`ExtendSubAuthoritiesError`] when the requested capacity exceeds
+    /// the Windows limit of 15 sub-authorities.
+    #[inline]
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), ExtendSubAuthoritiesError> {
+        let current = self.sub_authorities().len();
+        let max = crate::sid_mutation::max_sub_authorities();
+        if additional > max.saturating_sub(current) {
+            return Err(ExtendSubAuthoritiesError::TooManySubAuthorities { current, max });
+        }
+        self.reserve_for(additional);
+        Ok(())
+    }
+
+    /// Shrinks the allocation to the current logical SID length.
+    #[inline]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "a valid SID length fits in u8; the allocator operations form one reallocation"
+    )]
+    pub fn shrink_to_fit(&mut self) {
+        let len = self.sub_authorities().len();
+        if len == self.capacity() {
+            return;
+        }
+        // SAFETY: `len` is a valid SID count no larger than the current capacity.
+        unsafe {
+            let old_layout = SidSizeInfo::from_count(self.capacity)
+                .unwrap_unchecked()
+                .layout();
+            let new_layout = SidSizeInfo::from_count(len as u8)
+                .unwrap_unchecked()
+                .layout();
+            let resized = alloc::realloc(self.inner.as_ptr(), old_layout, new_layout.size());
+            self.inner =
+                NonNull::new(resized).unwrap_or_else(|| alloc::handle_alloc_error(new_layout));
+        }
+        self.capacity = len as u8;
+    }
+
+    /// Appends one sub-authority, growing the allocation when capacity is exhausted.
+    ///
+    /// # Errors
+    /// Returns [`PushSubAuthorityError`] if the SID already has 15 sub-authorities.
+    #[inline]
+    pub fn try_push_sub_authority(&mut self, value: u32) -> Result<(), PushSubAuthorityError> {
+        if self.sub_authorities().len() == crate::sid_mutation::max_sub_authorities() {
+            return Err(PushSubAuthorityError::MaximumSubAuthoritiesReached {
+                max: crate::sid_mutation::max_sub_authorities(),
+            });
+        }
+        self.grow_by(core::slice::from_ref(&value));
+        Ok(())
+    }
+
+    /// Collects and appends an iterator, growing the allocation at most once.
+    ///
+    /// The SID is left unchanged if the iterator exceeds the available capacity.
+    ///
+    /// # Errors
+    /// Returns [`ExtendSubAuthoritiesError`] if the iterator would exceed 15 values.
+    #[inline]
+    pub fn try_extend_sub_authorities<I>(
+        &mut self,
+        values: I,
+    ) -> Result<(), ExtendSubAuthoritiesError>
+    where
+        I: IntoIterator<Item = u32>,
+    {
+        let current = self.sub_authorities().len();
+        let max = crate::sid_mutation::max_sub_authorities();
+        let mut pending = arrayvec::ArrayVec::<u32, 15>::new();
+        for value in values {
+            if current + pending.len() == max || pending.try_push(value).is_err() {
+                return Err(ExtendSubAuthoritiesError::TooManySubAuthorities { current, max });
+            }
+        }
+        if !pending.is_empty() {
+            self.grow_by(pending.as_slice());
+        }
+        Ok(())
+    }
+
+    /// Removes and returns the final sub-authority without reducing capacity.
+    ///
+    /// # Errors
+    /// Returns [`PopSubAuthorityError`] if removing the value would empty the SID.
+    #[inline]
+    pub fn try_pop_sub_authority(&mut self) -> Result<u32, PopSubAuthorityError> {
+        let current = self.sub_authorities().len();
+        if current == 1 {
+            return Err(PopSubAuthorityError::CannotRemoveLastSubAuthority);
+        }
+        let value = self.last_sub_authority();
+        self.shrink_to(current - 1);
+        Ok(value)
+    }
+
+    /// Removes several trailing sub-authorities without reducing capacity.
+    ///
+    /// Removed values are returned in their original order.
+    ///
+    /// # Errors
+    /// Returns [`PopSubAuthoritiesError`] if `count` would empty the SID.
+    #[inline]
+    pub fn try_pop_sub_authorities(
+        &mut self,
+        count: usize,
+    ) -> Result<PoppedSubAuthorities, PopSubAuthoritiesError> {
+        let current = self.sub_authorities().len();
+        let available = current - 1;
+        if count > available {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        }
+        let new_count = current - count;
+        let Some(tail) = self.sub_authorities().get(new_count..) else {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        };
+        let Some(removed) = PoppedSubAuthorities::try_from_slice(tail) else {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        };
+        if count != 0 {
+            self.shrink_to(new_count);
+        }
+        Ok(removed)
+    }
+
+    /// Truncates trailing sub-authorities without reducing capacity.
+    ///
+    /// # Errors
+    /// Returns [`TruncateSubAuthoritiesError`] when `new_len` is zero.
+    #[inline]
+    pub fn try_truncate_sub_authorities(
+        &mut self,
+        new_len: NonZeroUsize,
+    ) -> Result<(), TruncateSubAuthoritiesError> {
+        let new_len = new_len.get();
+        if new_len == 0 {
+            return Err(TruncateSubAuthoritiesError::EmptySid);
+        }
+        if new_len < self.sub_authorities().len() {
+            self.shrink_to(new_len);
+        }
+        Ok(())
+    }
+
     /// Creates a new `SecurityIdentifier` from parts, returning a typed error on invalid input.
     ///
     /// # Parameters
@@ -221,8 +480,22 @@ impl SecurityIdentifier {
     /// ```
     #[inline]
     #[must_use]
+    #[allow(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "reading the SID header and constructing its DST reference are one validated operation"
+    )]
     pub fn as_sid(&self) -> &Sid {
-        self.inner.as_ref()
+        // SAFETY: `inner` points to an initialized SID header for the lifetime
+        // of self. The logical count is maintained in 1..=capacity.
+        unsafe {
+            let count = addr_of!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
+                .read() as usize;
+            debug_assert!(
+                (1..=self.capacity()).contains(&count),
+                "the logical SID length must fit the allocation"
+            );
+            &*from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), count)
+        }
     }
 
     /// Returns a mut reference to this `SecurityIdentifier` as a dynamically-sized [`Sid`].
@@ -253,8 +526,22 @@ impl SecurityIdentifier {
     /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
     /// ```
     #[inline]
+    #[allow(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "reading the SID header and constructing its mutable DST reference are one validated operation"
+    )]
     pub fn as_sid_mut(&mut self) -> &mut Sid {
-        self.inner.as_mut()
+        // SAFETY: exclusive access to self guarantees exclusive access to the
+        // initialized logical SID prefix.
+        unsafe {
+            let count = addr_of!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
+                .read() as usize;
+            debug_assert!(
+                (1..=self.capacity()).contains(&count),
+                "the logical SID length must fit the allocation"
+            );
+            &mut *from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), count)
+        }
     }
 }
 
@@ -320,35 +607,29 @@ impl Deref for SecurityIdentifier {
     type Target = Sid;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        self.as_sid()
     }
 }
 
 impl DerefMut for SecurityIdentifier {
-    delegate!(
-        to self.inner {
-            #[inline]
-            fn deref_mut(&mut self) -> &mut Sid;
-        }
-    );
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
+    }
 }
 
 impl SecurityIdentifier {
-    delegate! {
-        to self.inner {
-            #[must_use]
-            #[inline]
-            pub fn classification(&self) -> crate::SidClassification;
-        }
+    #[must_use]
+    #[inline]
+    pub fn classification(&self) -> crate::SidClassification {
+        self.as_sid().classification()
     }
 }
 
 impl AsRef<Sid> for SecurityIdentifier {
-    delegate! {
-        to self.inner {
-            #[inline]
-            fn as_ref(&self) -> &Sid;
-        }
+    #[inline]
+    fn as_ref(&self) -> &Sid {
+        self.as_sid()
     }
 }
 
@@ -360,11 +641,9 @@ impl AsRef<[u8]> for SecurityIdentifier {
 }
 
 impl AsMut<Sid> for SecurityIdentifier {
-    delegate! {
-        to self.inner {
-            #[inline]
-            fn as_mut(&mut self) -> &mut Sid;
-        }
+    #[inline]
+    fn as_mut(&mut self) -> &mut Sid {
+        self.as_sid_mut()
     }
 }
 
@@ -374,14 +653,24 @@ impl Clone for SecurityIdentifier {
         self.as_sid().into()
     }
     #[inline]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "a valid SID contains at most 15 sub-authorities and therefore fits in u8"
+    )]
     fn clone_from(&mut self, source: &Self) {
-        if Layout::for_value(self.as_sid()) == Layout::for_value(source.as_sid()) {
-            // Safety: We checked layout is ok
-            unsafe {
-                self.as_bytes_mut().copy_from_slice(source.as_bytes());
-            }
-        } else {
-            *self = source.clone();
+        let source_len = source.sub_authorities().len();
+        let additional = source_len.saturating_sub(self.sub_authorities().len());
+        self.reserve_for(additional);
+        let source_size = SidSizeInfo::from_count(source_len as u8)
+            .map(|info| info.layout().size())
+            .unwrap_or_default();
+        debug_assert_ne!(source_size, 0, "a valid SID allocation is never empty");
+        // SAFETY: reserve_for guarantees sufficient capacity for the complete
+        // logical source SID, and mutable and shared references cannot alias.
+        unsafe {
+            self.inner
+                .as_ptr()
+                .copy_from_nonoverlapping(source.inner.as_ptr(), source_size);
         }
     }
 }
@@ -389,7 +678,7 @@ impl Clone for SecurityIdentifier {
 impl Display for SecurityIdentifier {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(&*self.inner, f)
+        Display::fmt(self.as_sid(), f)
     }
 }
 
@@ -429,7 +718,11 @@ impl PartialEq for SecurityIdentifier {
 impl From<Box<Sid>> for SecurityIdentifier {
     #[inline]
     fn from(value: Box<Sid>) -> Self {
-        Self { inner: value }
+        let capacity = value.sub_authority_count;
+        let raw = Box::into_raw(value).cast::<u8>();
+        // SAFETY: Box pointers are always non-null.
+        let inner = unsafe { NonNull::new_unchecked(raw) };
+        Self { inner, capacity }
     }
 }
 
@@ -459,8 +752,31 @@ where
 
 impl From<SecurityIdentifier> for Box<Sid> {
     #[inline]
-    fn from(value: SecurityIdentifier) -> Self {
-        value.inner
+    fn from(mut value: SecurityIdentifier) -> Self {
+        value.shrink_to_fit();
+        let value = ManuallyDrop::new(value);
+        let count = value.capacity as usize;
+        let raw = from_raw_parts_mut(value.inner.as_ptr().cast::<()>(), count);
+        // SAFETY: shrink_to_fit made the allocation layout exactly match this DST.
+        unsafe { Self::from_raw(raw) }
+    }
+}
+
+impl Drop for SecurityIdentifier {
+    #[inline]
+    #[allow(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "recovering the allocation layout and deallocating it form one drop operation"
+    )]
+    fn drop(&mut self) {
+        // SAFETY: the allocation was created by the global allocator with the
+        // layout corresponding to capacity and remains owned by self.
+        unsafe {
+            let layout = SidSizeInfo::from_count(self.capacity)
+                .unwrap_unchecked()
+                .layout();
+            alloc::dealloc(self.inner.as_ptr(), layout);
+        }
     }
 }
 

@@ -37,7 +37,7 @@ default = ["std"]
 std = ["alloc", "parsing/std", "dep:smallvec","dep:num_enum","dep:widestring", "serde?/std", "thiserror/std", "dep:windows-sys" ]
 alloc = ["serde?/alloc"]
 macro = ["dep:sid_macro"]
-serde = ["dep:serde", "dep:arrayvec", "dep:cfg-if"]
+serde = ["dep:serde", "dep:cfg-if"]
 
 [dependencies]
 cfg-if = { version = "1", optional = true }
@@ -45,7 +45,7 @@ delegate = "0.13"
 serde = { version = "1", optional = true , default-features = false}
 parsing = { workspace = true}
 thiserror = { workspace = true }
-arrayvec = { workspace = true, optional = true }
+arrayvec = { workspace = true }
 sid_macro = { workspace = true, optional = true }
 
 
