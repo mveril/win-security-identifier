@@ -4,17 +4,6 @@
 //! operations together: the SID is a dynamically sized type whose metadata is
 //! the logical sub-authority count, while the allocation uses a separately
 //! tracked capacity bounded by the Windows maximum.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_ptr_alignment,
-    clippy::manual_slice_size_calculation,
-    clippy::missing_assert_message,
-    clippy::missing_inline_in_public_items,
-    clippy::multiple_unsafe_ops_per_block,
-    clippy::use_self,
-    reason = "bounded SID DST pointer operations are guarded by capacity invariants"
-)]
-
 use crate::ConstSid;
 use crate::InvalidSidBinaryFormat;
 pub use crate::InvalidSidFormat;
@@ -88,9 +77,17 @@ impl Debug for SecurityIdentifier {
 }
 
 impl SecurityIdentifier {
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "the SID limit guarantees the new count fits in u8; the pointer operations initialize one DST tail"
+    )]
     fn grow_by(&mut self, appended: &[u32]) {
         let new_count = self.sub_authorities().len() + appended.len();
-        debug_assert!(new_count <= crate::sid_mutation::max_sub_authorities());
+        debug_assert!(
+            new_count <= crate::sid_mutation::max_sub_authorities(),
+            "the new SID length must remain within the Windows limit"
+        );
         self.reserve_for(appended.len());
         let old_count = self.sub_authorities().len();
         // SAFETY: reserve guarantees enough storage, and the destination is the
@@ -106,8 +103,16 @@ impl SecurityIdentifier {
         }
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "the capacity invariant guarantees the new count fits in u8; the pointer operations update one SID header"
+    )]
     fn shrink_to(&mut self, new_count: usize) {
-        debug_assert!((1..=self.capacity()).contains(&new_count));
+        debug_assert!(
+            (1..=self.capacity()).contains(&new_count),
+            "the new SID length must fit the allocation"
+        );
         // SAFETY: the header is initialized and `new_count` fits the allocation.
         unsafe {
             addr_of_mut!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
@@ -122,9 +127,17 @@ impl SecurityIdentifier {
         self.capacity as usize
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "the Windows SID limit guarantees the capacity fits in u8; the allocator operations form one reallocation"
+    )]
     fn reserve_for(&mut self, additional: usize) {
         let required = self.sub_authorities().len().saturating_add(additional);
-        debug_assert!(required <= crate::sid_mutation::max_sub_authorities());
+        debug_assert!(
+            required <= crate::sid_mutation::max_sub_authorities(),
+            "the required SID capacity must remain within the Windows limit"
+        );
         if required <= self.capacity() {
             return;
         }
@@ -163,6 +176,12 @@ impl SecurityIdentifier {
     }
 
     /// Shrinks the allocation to the current logical SID length.
+    #[inline]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "a valid SID length fits in u8; the allocator operations form one reallocation"
+    )]
     pub fn shrink_to_fit(&mut self) {
         let len = self.sub_authorities().len();
         if len == self.capacity() {
@@ -461,13 +480,20 @@ impl SecurityIdentifier {
     /// ```
     #[inline]
     #[must_use]
+    #[allow(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "reading the SID header and constructing its DST reference are one validated operation"
+    )]
     pub fn as_sid(&self) -> &Sid {
         // SAFETY: `inner` points to an initialized SID header for the lifetime
         // of self. The logical count is maintained in 1..=capacity.
         unsafe {
             let count = addr_of!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
                 .read() as usize;
-            debug_assert!((1..=self.capacity()).contains(&count));
+            debug_assert!(
+                (1..=self.capacity()).contains(&count),
+                "the logical SID length must fit the allocation"
+            );
             &*from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), count)
         }
     }
@@ -500,13 +526,20 @@ impl SecurityIdentifier {
     /// assert_eq!(sid_mut.to_string(), "S-1-0-21-100-0");
     /// ```
     #[inline]
+    #[allow(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "reading the SID header and constructing its mutable DST reference are one validated operation"
+    )]
     pub fn as_sid_mut(&mut self) -> &mut Sid {
         // SAFETY: exclusive access to self guarantees exclusive access to the
         // initialized logical SID prefix.
         unsafe {
             let count = addr_of!((*self.inner.as_ptr().cast::<SidHead>()).sub_authority_count)
                 .read() as usize;
-            debug_assert!((1..=self.capacity()).contains(&count));
+            debug_assert!(
+                (1..=self.capacity()).contains(&count),
+                "the logical SID length must fit the allocation"
+            );
             &mut *from_raw_parts_mut(self.inner.as_ptr().cast::<()>(), count)
         }
     }
@@ -620,6 +653,10 @@ impl Clone for SecurityIdentifier {
         self.as_sid().into()
     }
     #[inline]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "a valid SID contains at most 15 sub-authorities and therefore fits in u8"
+    )]
     fn clone_from(&mut self, source: &Self) {
         let source_len = source.sub_authorities().len();
         let additional = source_len.saturating_sub(self.sub_authorities().len());
@@ -627,7 +664,7 @@ impl Clone for SecurityIdentifier {
         let source_size = SidSizeInfo::from_count(source_len as u8)
             .map(|info| info.layout().size())
             .unwrap_or_default();
-        debug_assert_ne!(source_size, 0);
+        debug_assert_ne!(source_size, 0, "a valid SID allocation is never empty");
         // SAFETY: reserve_for guarantees sufficient capacity for the complete
         // logical source SID, and mutable and shared references cannot alias.
         unsafe {
@@ -721,11 +758,16 @@ impl From<SecurityIdentifier> for Box<Sid> {
         let count = value.capacity as usize;
         let raw = from_raw_parts_mut(value.inner.as_ptr().cast::<()>(), count);
         // SAFETY: shrink_to_fit made the allocation layout exactly match this DST.
-        unsafe { Box::from_raw(raw) }
+        unsafe { Self::from_raw(raw) }
     }
 }
 
 impl Drop for SecurityIdentifier {
+    #[inline]
+    #[allow(
+        clippy::multiple_unsafe_ops_per_block,
+        reason = "recovering the allocation layout and deallocating it form one drop operation"
+    )]
     fn drop(&mut self) {
         // SAFETY: the allocation was created by the global allocator with the
         // layout corresponding to capacity and remains owned by self.
