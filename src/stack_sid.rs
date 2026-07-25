@@ -9,10 +9,16 @@ use core::hash::Hash;
 use core::ptr::{from_raw_parts, from_raw_parts_mut};
 
 use crate::sid::MAX_SUBAUTHORITY_COUNT;
+use crate::sid_mutation::MAX_SUB_AUTHORITIES;
 use crate::utils::{self, validate_sid_bytes_unaligned};
 use crate::{ConstSid, InvalidSidBinaryFormat, InvalidSidParts, Sid, SidIdentifierAuthority};
+use crate::{
+    ExtendSubAuthoritiesError, PopSubAuthoritiesError, PopSubAuthorityError, PoppedSubAuthorities,
+    PushSubAuthorityError, TruncateSubAuthoritiesError,
+};
 use core::fmt::{self, Display};
 use core::mem::{MaybeUninit, size_of, size_of_val};
+use core::num::NonZeroUsize;
 use core::ptr;
 use core::str::FromStr;
 use delegate::delegate;
@@ -38,6 +44,156 @@ impl StackSid {
             "SID revision invariant violated"
         );
         self.revision
+    }
+    /// Changes the SID identifier authority without changing its layout.
+    #[inline]
+    pub const fn set_identifier_authority(&mut self, authority: SidIdentifierAuthority) {
+        self.identifier_authority = authority;
+    }
+
+    /// Returns mutable access to the existing sub-authorities.
+    #[inline]
+    pub const fn sub_authorities_mut(&mut self) -> &mut [u32] {
+        self.as_sid_mut().sub_authorities_mut()
+    }
+
+    /// Appends one sub-authority to the fixed-capacity stack storage.
+    ///
+    /// # Errors
+    /// Returns [`PushSubAuthorityError`] if the SID already has 15 sub-authorities.
+    #[inline]
+    pub fn try_push_sub_authority(&mut self, value: u32) -> Result<(), PushSubAuthorityError> {
+        let current = self.sub_authority_count as usize;
+        let max = crate::sid_mutation::max_sub_authorities();
+        if current == max {
+            return Err(PushSubAuthorityError::MaximumSubAuthoritiesReached { max });
+        }
+        let Some(slot) = self.sub_authorities.get_mut(current) else {
+            return Err(PushSubAuthorityError::MaximumSubAuthoritiesReached { max });
+        };
+        slot.write(value);
+        self.sub_authority_count += 1;
+        Ok(())
+    }
+
+    /// Collects and appends an iterator without heap allocation.
+    ///
+    /// The SID is left unchanged if the iterator exceeds the available capacity.
+    ///
+    /// # Errors
+    /// Returns [`ExtendSubAuthoritiesError`] if the iterator would exceed 15 values.
+    #[inline]
+    pub fn try_extend_sub_authorities<I>(
+        &mut self,
+        values: I,
+    ) -> Result<(), ExtendSubAuthoritiesError>
+    where
+        I: IntoIterator<Item = u32>,
+    {
+        let current = self.sub_authority_count as usize;
+        let max: usize = crate::sid_mutation::max_sub_authorities();
+        let mut pending = arrayvec::ArrayVec::<u32, MAX_SUB_AUTHORITIES>::new();
+        for value in values {
+            if current + pending.len() == max || pending.try_push(value).is_err() {
+                return Err(ExtendSubAuthoritiesError::TooManySubAuthorities { current, max });
+            }
+        }
+        let pending_len = pending.len();
+        for (slot, value) in self.sub_authorities.iter_mut().skip(current).zip(pending) {
+            slot.write(value);
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the resulting count is validated against the Windows maximum"
+        )]
+        {
+            self.sub_authority_count = (current + pending_len) as u8;
+        }
+        Ok(())
+    }
+
+    /// Removes and returns the final sub-authority.
+    ///
+    /// # Errors
+    /// Returns [`PopSubAuthorityError`] if removing the value would empty the SID.
+    #[inline]
+    pub fn try_pop_sub_authority(&mut self) -> Result<u32, PopSubAuthorityError> {
+        let current = self.sub_authority_count as usize;
+        if current == 1 {
+            return Err(PopSubAuthorityError::CannotRemoveLastSubAuthority);
+        }
+        let Some(slot) = self.sub_authorities.get(current - 1) else {
+            return Err(PopSubAuthorityError::CannotRemoveLastSubAuthority);
+        };
+        // SAFETY: every slot below `sub_authority_count` is initialized.
+        let value = unsafe { slot.assume_init_read() };
+        self.sub_authority_count -= 1;
+        Ok(value)
+    }
+
+    /// Removes several trailing sub-authorities and returns them in original order.
+    ///
+    /// # Errors
+    /// Returns [`PopSubAuthoritiesError`] if `count` would empty the SID.
+    #[inline]
+    pub fn try_pop_sub_authorities(
+        &mut self,
+        count: usize,
+    ) -> Result<PoppedSubAuthorities, PopSubAuthoritiesError> {
+        let current = self.sub_authority_count as usize;
+        let available = current - 1;
+        if count > available {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        }
+        let new_count = current - count;
+        let Some(tail) = self.sub_authorities().get(new_count..) else {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        };
+        let Some(removed) = PoppedSubAuthorities::try_from_slice(tail) else {
+            return Err(PopSubAuthoritiesError::InsufficientSubAuthorities {
+                requested: count,
+                available,
+            });
+        };
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "new_count is no larger than the existing valid u8 count"
+        )]
+        {
+            self.sub_authority_count = new_count as u8;
+        }
+        Ok(removed)
+    }
+
+    /// Truncates trailing sub-authorities while retaining at least one value.
+    ///
+    /// # Errors
+    /// Returns [`TruncateSubAuthoritiesError`] when `new_len` is zero.
+    #[inline]
+    pub const fn try_truncate_sub_authorities(
+        &mut self,
+        new_len: NonZeroUsize,
+    ) -> Result<(), TruncateSubAuthoritiesError> {
+        let new_len = new_len.get();
+        if new_len == 0 {
+            return Err(TruncateSubAuthoritiesError::EmptySid);
+        }
+        if new_len < self.sub_authority_count as usize {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "new_len is smaller than an existing valid u8 count"
+            )]
+            {
+                self.sub_authority_count = new_len as u8;
+            }
+        }
+        Ok(())
     }
 
     /// Owned, stack-allocated Windows **Security Identifier** (SID).

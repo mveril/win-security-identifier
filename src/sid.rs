@@ -214,6 +214,27 @@ impl Sid {
         }
     }
 
+    /// Returns mutable access to the existing sub-authorities.
+    ///
+    /// This cannot change the number of values and therefore preserves the SID layout.
+    #[inline]
+    pub const fn sub_authorities_mut(&mut self) -> &mut [u32] {
+        // SAFETY: the SID invariant guarantees that the DST tail contains
+        // `sub_authority_count` initialized values.
+        unsafe {
+            slice::from_raw_parts_mut(
+                self.sub_authorities.as_mut_ptr(),
+                self.sub_authority_count as usize,
+            )
+        }
+    }
+
+    /// Changes the SID identifier authority without changing its layout.
+    #[inline]
+    pub const fn set_identifier_authority(&mut self, authority: SidIdentifierAuthority) {
+        self.identifier_authority = authority;
+    }
+
     /// Computes the minimal `Layout` (size + align) needed for **this** instance
     /// given its current `sub_authority_count`.
     ///
